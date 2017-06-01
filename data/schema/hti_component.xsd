@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+// Description:	hti_peripheral.xsd
+// Author:		Rob Gaddi, Highland Technology
+// Version:     $Revision: 0 $
+// Date:        $Date: July 28, 2009 $
+//
+-->
+<xs:schema	xmlns:xs="http://www.w3.org/2001/XMLSchema">
+			
+<xs:element name="component"><xs:complexType>
+
+	<xs:sequence>	
+		<xs:element name="description" type="xs:string" maxOccurs="unbounded"/>
+		<xs:element name="register" maxOccurs="unbounded"><xs:complexType >
+		
+			<xs:simpleType name="SignType">
+				<xs:enumeration value="bits"/>
+				<xs:enumeration value="signed"/>
+				<xs:enumeration value="unsigned"/>
+			</xs:simpleType>
+		
+			<xs:sequence>
+				<xs:element name="description" type="xs:string" maxOccurs="unbounded"/>
+				<xs:element name="field" minOccurs="0" maxOccurs="unbounded"><xs:complexType >
+				
+					<xs:sequence>
+						<xs:element name="description" type="xs:string" minOccurs="0"/>
+						<xs:element name="enum" minOccurs="0" maxOccurs="unbounded"><xs:complexType>
+						
+							<xs:sequence>
+								<xs:element name="description" type="xs:string"/>
+							</xs:sequence>
+							<xs:attribute name="name"	type="xs:string"	use="required"/>
+							<xs:attribute name="value"	type="xs:integer"	use="required"/>
+						
+						</xs:complexType>
+						</xs:element>
+					</xs:sequence>
+					<xs:attribute name="name"		type="xs:string"	use="required"/>
+					<xs:attribute name="bitOffset"	type="xs:integer"	use="required"/>
+					<xs:attribute name="bitWidth"	type="xs:integer"	use="required"/>
+					<xs:attribute name="readOnly" type="xs:boolean" default="false"/>
+					<xs:attribute name="writeOnly" type="xs:boolean" default="false"/>
+					<xs:attribute name="reserved" type="xs:boolean" default="false"/>
+					<xs:attribute name="format" type="SignType" default="bits"/>
+				
+				</xs:complexType></xs:element>
+			</xs:sequence>
+			<xs:attribute name="name"	type="xs:string"	use="required"/>
+			<xs:attribute name="offset"	type="xs:string"	use="required"/>
+			<xs:attribute name="size"	type="xs:integer"/>
+			<xs:attribute name="readOnly" type="xs:boolean" default="false"/>
+			<xs:attribute name="writeOnly" type="xs:boolean" default="false"/>
+			<xs:attribute name="format" type="SignType" default="bits"/>
+			
+		</xs:complexType></xs:element>
+	</xs:sequence>
+	<xs:attribute name="name"	type="xs:string"	use="required"/>
+	<xs:attribute name="base"	type="xs:string"/>
+	<xs:attribute name="length"	type="xs:string"	use="required"/>
+	<xs:attribute name="width"	type="xs:integer"	use="required"/>
+	<xs:attribute name="readOnly" type="xs:boolean" default="false"/>
+	<xs:attribute name="writeOnly" type="xs:boolean" default="false"/>
+	
+</xs:complexType></xs:element>
+
+</xs:schema>

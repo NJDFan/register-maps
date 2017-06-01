@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<component	name="ANALOG" width="16"
+			xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+			xsi:noNamespaceSchemaLocation="../schema/hti_component.xsd">
+			
+    <desc>
+	All analog registers for the V250
+	</desc>
+	
+    <register name="THRA" offset="0" format="unsigned">
+        <desc> BANK A input comparator threshold </desc> 
+    </register>
+    
+    <register name="THRB" offset="1" format ="unsigned">
+        <desc> BANK B input comparator threshold </desc>  
+    </register>
+    
+    <register name="THRC" offset="2" format ="unsigned">
+        <desc> BANK C input comparator threshold </desc>  
+    </register>
+    
+    <register name="THRD" offset="3" format ="unsigned">
+        <desc> BANK D input comparator threshold</desc>  
+    </register>
+    
+    <register name="PUPA" offset="4" format ="unsigned">
+        <desc> Bank A output pullup voltage </desc>  
+    </register>
+    
+    <register name="PUPB" offset="5" format ="unsigned">
+        <desc> Bank B output pullup voltage </desc>  
+    </register>
+    
+    <register name="PUPC" offset="6" format ="unsigned">
+        <desc> Bank C output pullup voltage </desc>  
+    </register>
+    
+    <register name="PUPD" offset="7" format ="unsigned">
+        <desc> Bank D output pullup voltage </desc>  
+    </register>
+
+</component>

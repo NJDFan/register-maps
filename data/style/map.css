@@ -1,0 +1,50 @@
+body {
+    font-family: Verdana, Geneva, sans-serif;
+    font-size: 1em;
+    width: 750px;
+}
+
+h1 {
+    color: black;
+    font-size: 2em;
+    font-weight: bold;
+}
+
+h2 {
+    color: black;
+    font-size: 1.6em;
+}
+
+h3 {
+    color: DarkBlue;
+    font-size: 1.25em;
+}
+
+table {
+    border: 2px solid DarkBlue;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+th {
+    text-align: center;
+    font-weight: bold;
+}
+
+td {
+    border: 1px solid black;
+}
+
+td.peripheral {
+    text-align: center;
+}
+
+td.address {
+    text-align: center;
+    font-family: "Lucida Console", Monaco, monospace;
+    font-size: 0.85em;
+    font-weight: bold;
+    background: PapayaWhip;
+}
+
+td.desc

@@ -1,0 +1,66 @@
+body {
+    font-family: Verdana, Geneva, sans-serif;
+    font-size: 1em;
+    width: 750px;
+}
+
+h1 {
+    color: black;
+    font-size: 2em;
+    font-weight: bold;
+}
+
+h2 {
+    color: black;
+    font-size: 1.6em;
+}
+
+h3 {
+    color: DarkBlue;
+    font-size: 1.25em;
+}
+
+div {
+	border: 1px solid Gainsboro;
+	margin: 2px;
+	padding: 2px;
+	page-break-inside: avoid;
+}
+
+div.regarray {
+	border: 2px solid black;
+}
+
+table.bitfield {
+    border: 2px solid DarkBlue;
+    margin-left: auto;
+    margin-right: auto;
+    text-align: center;
+}
+
+tr.bit_numbers {
+    font-family: "Lucida Console", Monaco, monospace;
+    font-size: 0.7em;
+    font-weight: bold;
+    background: PapayaWhip;
+}
+
+td {
+    border: 1px solid black;
+}
+
+.std_field {
+}
+
+.reserved_field {
+    background: DarkGrey;
+    color: DarkGrey;
+}
+
+ul.fieldlist {
+    list-style-type: disc;
+}
+
+.fielddef {
+    font-style: italic;
+}

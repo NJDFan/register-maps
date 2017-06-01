@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<component	name="CALTABLE" width="16"
+			xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+			xsi:noNamespaceSchemaLocation="../schema/hti_component.xsd">
+			
+    <desc>The CALTABLE peripheral holds calibration information until values are stored in EE.</desc>
+	<register name="CALID" format="unsigned" width="16">
+		<desc>Unit Calibration ID</desc>
+	</register>
+	<register name="CALYEAR" format="unsigned" width="16" offset="1">
+		<desc>Calibration year</desc>
+	</register>
+	<register name="CALDAMO" format="unsigned" width="16" offset="2">
+		<desc>Calibration day and month.</desc>
+	</register>
+	<register name="CALSERIAL" format="unsigned" width="16" offset="3">
+		<desc>Unit Serial number</desc>
+	</register>
+	<register name="CALDASH" format="unsigned" width="16" offset="4">
+		<desc>Unit dash number</desc>
+	</register>
+	<register name="CALHWREV" format="unsigned" width="16" offset="5">
+		<desc>Unit hardware revision</desc>
+	</register>
+	<registerarray name="RESERVED" count="56" framesize="0x1" offset="6">
+		<desc>Unused registers</desc>
+		<register name="RESERVEDn" width="16"></register>
+	</registerarray>
+		
+	<register name="CHECKSUM" format="unsigned" width="16" offset="63">
+		<desc>Checksum additive.</desc>
+	</register>	
+</component>

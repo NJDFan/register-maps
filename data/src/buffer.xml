@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<component	name="BUFFER" width="16"
+			xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+			xsi:noNamespaceSchemaLocation="../schema/hti_component.xsd">
+			
+    <desc>
+	Control register for each of the 64 i/o channels
+	</desc>
+	
+	
+	<registerarray name="BUFFER" count ="128" framesize="0x1" offset="0">
+        <desc> bufffer registers </desc>
+            <register name="BUFFn"  width="16"></register>
+    </registerarray>
+    
+
+
+</component>

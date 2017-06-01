@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<component	name="VMESPACE" width="16"
+			xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+			xsi:noNamespaceSchemaLocation="../schema/hti_component.xsd">
+			
+    <desc>
+	The VMESPACE peripheral holds registers to the VMEbus.  
+	An array of 256 16bit VME registers will be implemented per described in the V280 manual.
+	</desc>          
+    <register name="MFR" width="16">
+        <desc> Highland ID </desc>  
+    </register>
+    
+    <register name="MODEL" width="16">
+        <desc> V280 Model ID </desc>  
+    </register>
+	
+	<register name="MODREV" width="16" >
+        <desc> Hardware Revision </desc>  
+    </register>
+
+    <register name="SERIAL" width="16" >
+        <desc> Unit serial number </desc>  
+    </register>
+    
+    <register name="FIRWARE" width="16">
+        <desc> Programmed firmware </desc>  
+    </register>
+    
+    <register name="FREV" width="16">
+        <desc> Firmware revision </desc>  
+    </register> 
+    
+    <register name="MCOUNT" width="16" >
+        <desc> 1KHz real-time counter </desc>  
+    </register> 
+    
+    <register name="DASH" width="16" >
+        <desc> Unit dash number </desc>  
+    </register>
+    <register name="CALID" width="16" >
+        <desc> Calibration table status </desc>  
+    </register>
+		<register name="YCAL" width="16" >
+        <desc> Calibration date: year </desc>  
+    </register>
+	<register name="DCAL" width="16" >
+		<desc> Calibration date: month/day </desc>  
+    </register>
+		
+	<register name="RESERVED" width="16" offset="11">
+		<desc>Unused registers</desc>
+	</register>
+	
+	<register name="ULED" width="16" offset="12" >
+        <desc> User LED control </desc>  
+    </register>
+	
+    <register name="MACRO"  width="16" offset="16" >
+        <desc>Macro register</desc>
+    </register>
+    
+	<registerarray name="MPARAM" count ="4" framesize="0x1" offset="17">
+        <desc>Macro parameter registers</desc>
+            <register name="PARAMn"  width="16"></register>
+    </registerarray>
+	
+    <registerarray name="STATUS" count="3" framesize="0x1" offset="24">
+        <desc>Current status of inputs </desc>
+            <register name="STATUSn"  width="16"></register>
+    </registerarray> 
+	
+    <registerarray name="RISE" count="3" framesize="0x1" offset="28">
+        <desc>Rise debounce time </desc>
+            <register name="RISEn"  width="16"></register>
+    </registerarray>
+	
+	<registerarray name="FALL" count ="3" framesize="0x1" >
+        <desc>Fall debouce time </desc>
+            <register name="FALLn"  width="16"></register>
+    </registerarray>
+    
+	<registerarray name="BISTERROR" count ="3" framesize="0x1" offset="36">
+        <desc>Error registers for BIST </desc>
+            <register name="BISTERRn"  width="16"></register>
+    </registerarray>
+	
+	<registerarray name="BUFFER" count ="128" framesize="0x1" offset="128" >
+        <desc>Buffer registers </desc>
+            <register name="BUFFn"  width="16"></register>
+    </registerarray>		
+</component>
