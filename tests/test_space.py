@@ -133,6 +133,11 @@ class TestMMSpace(BaseSpaceTest):
 		last = list(self.space.last())
 		self.assertListEqual(last, ['H', 128+64, 64])
 		
+	def testStartLegality(self):
+		with self.assertRaises(IndexError):
+			self.space.add('E', 32, 128+48)
+		self.space.add('E', 32, 128+64)
+		
 class TestLinearResizer(BaseSpaceTest):
 	"""We have no use for this, but the LinearResizer shouldn't go
 	completely untested."""
