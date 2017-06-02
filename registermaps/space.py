@@ -81,8 +81,7 @@ class LinearResizer(NoResizer):
 
     @staticmethod
     def resize(spc, need):
-        for g in spc:
-            last = g
+        last = spc.last()
         if not last:
             # The Space currently ends with a gap, we can use it.
             spc.size += need - last.size
@@ -92,7 +91,7 @@ class LinearResizer(NoResizer):
             spc.size += need
             return PlacedObject(None, last.end, need)
     resize.__doc__ = NoResizer.resize.__doc__
-            
+    
 class BinaryResizer(NoResizer):
     """Adds enough space to keep a Space.size a power of 2."""
     
@@ -143,6 +142,14 @@ class BinaryPlacer:
     place.__doc__ = NoPlacer.place.__doc__
 
 class Space:
+    """A Space that can be filled.
+    
+    Optional arguments are an initial size, a Resizer class, and a
+    Placer class.  Without providing a Resizer, the initial size is
+    the size the Space will always be.  Without providing a Placer
+    no objects can be placed in the Space, making it pretty useless.
+    """
+    
     def __init__(self, size=None, resizer=NoResizer, placer=NoPlacer):
         self.size = 1 if size is None else size
         self._resizer = resizer
