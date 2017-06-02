@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 """
 Represents a Space that can be filled.
 
@@ -34,8 +33,6 @@ Spaces are derived from FiniteSpace, a Space of a finite overall
 size.  Presently there is no ability to remove items from a Space.
 """
 
-import bisect
-
 def clp2(x):
     """Find the lowest number which is a whole power of 2 that is >= x."""
     if (x < 1):
@@ -46,55 +43,14 @@ def clp2(x):
         y = y * 2
         
     return y
-    
-class _Error(Exception):
-    def __init__(self, text):
-        self.text = text
-    def __str__(self):
-        return self.text
 
-class InsufficientSpaceError(_Error):
-    """Raised to indicate that no space could be found for an object
-    with no defined position.
-    """
-    
-    def __init__(self, text, attempt):
-        self.attempt = attempt
-        super(InsufficientSpaceError, self).__init__(text)
-       
-class OutOfBoundsError(_Error):
-    """Raised to indicate that the fixed location requested for the
-    object was outside the range of the space, or that the fixed
-    location plus the size would be outside the range of the space.
-    
-    Contains the field attempt, a PlacedObject representing the object
-    that was trying to be placed.
-    """
-    
-    def __init__(self, text, attempt):
-        self.attempt = attempt
-        super(OutOfBoundsError, self).__init__(text)
-    
-class BlockedSpaceError(_Error):
-    """
-    Raised to indicate that one object could not be placed at a fixed
-    location in the space because another was already there.
-    
-    Contains two fields, attempt and blocking.  Both are PlacedObjects
-    representing respectively the object that was trying to be placed
-    and the object that prevented it.
-    """
-    
-    def __init__(self, text, attempt, blocking):
-        self.attempt = attempt
-        self.blocking = blocking
-        super(BlockedSpaceError, self).__init__(text)
-        
 class PlacedObject:
     """
     Represents an object as placed in the Space.
     
-    PlacedObjects are seed only when iterating over the Space.
+    Also iterable as obj, pos, size for tuple unpacking.
+    
+    Gaps are False, real objects are True.
     
     Members:
     obj -   The stored object.  If this object is None, the PlacedObject
@@ -102,13 +58,194 @@ class PlacedObject:
     pos -   The starting location in the Space.
     size -  The amount of the Space occupied by the object.
     """
+    
     def __init__(self, obj, pos, size):
         self.obj = obj
         self.pos = pos
         self.size = size
         
-    def __nonzero__(self):
-        return bool(self.obj)
+    def __bool__(self):
+        return self.obj
+        
+    @property
+    def start(self):
+        """Start position."""
+        return self.pos
+        
+    @property
+    def end(self):
+        """Position 1 past the end."""
+        return self.pos + self.size
+    
+    def __getitem__(self, idx):
+        attr = ['obj', 'pos', 'size'][idx]
+        return getattr(self, attr)
+
+class NoResizer:
+    """A null resizer; prevents resizing a Space."""
+    
+    @staticmethod
+    def resize(spc, need):
+        """Resize a Space.  Returns a PlacedObject for the gap at the end.
+        
+        spc - The space to be resized.
+        need - The amount of space needed in the resize.
+        """
+        raise NotImplementedError("Resizing this space not allowed.")
+    
+class LinearResizer(NoResizer):
+    """Adds only as much space as needed."""
+
+    @staticmethod
+    def resize(spc, need):
+        for g in spc:
+            last = g
+        if not last:
+            # The Space currently ends with a gap, we can use it.
+            spc.size += need - last.size
+            return PlacedObject(None, last.start, need)
+        else:
+            # The Space currently ends with an object
+            spc.size += need
+            return PlacedObject(None, last.end, need)
+    resize.__doc__ = NoResize.resize.__doc__
+            
+class BinaryResizer(NoResizer):
+    """Adds enough space to keep a Space.size a power of 2."""
+    
+    @staticmethod
+    def resize(spc, need):
+        oldsize = spc.size
+        newsize = spc.size + need
+        spc.size = 2**((newsize-1).bit_length())
+        return PlacedObject(None, oldsize, spc.size-oldsize)
+    resize.__doc__ = NoResize.resize.__doc__
+
+class NoPlacer:
+    """A null Placer, prevents adding objects to a Space."""
+    @staticmethod
+    def place(obj, size, gap):
+        """Try to place an object into a given gap.
+        
+        Returns a new PlacedObject or None if it won't fit.
+        """
+        raise NotImplementedError("Not allowed to place in this Space.")
+        
+class LinearPlacer:
+    """Place an object in the first place it will fit."""
+    
+    @staticmethod
+    def place(obj, size, gap):
+        if gap.size > size:
+            return PlacedObject(obj, gap.start, size)
+        return None
+    place.__doc__ = NoPlacer.place.__doc__
+        
+class BinaryPlacer:
+    """Place an object on a power-of-2 boundary based on size."""
+    
+    @staticmethod
+    def place(obj, size, gap):
+        # Alignment is the next power of 2 greater than or
+        # equal to size.
+        alignment = 2**(size-1).bit_length()
+        amask = alignment-1
+        
+        # Find the first alignment boundary using bit-twiddling tricks.
+        start = (gap.start + amask) & ~amask
+        end = aligned_start + size
+        if end <= gap.end:
+            return PlacedObject(obj, start, size)
+        return None            
+    place.__doc__ = NoPlacer.place.__doc__
+
+class Space:
+    def __init__(self, size=None, resizer=NoResizer, placer=NoPlacer):
+        self.size = 1 if size is None else size
+        self._resizer = resizer
+        self._placer = placer
+        self._items = []
+    
+    def _enumerated_iter(self):
+        """Generate (idx, po) pairs of index and PlacedObject. 
+        
+        index preceeds the next true object if po is a gap.
+        """
+        
+        prev = PlacedObject(None, -1, 1)
+        for n, i in enumerate(self.items):
+            if i.start > prev.end:
+                yield (n, PlacedObject(None, prev.end, i.start))
+            yield (n, i)
+            prev = i
+        if i.end < self.size:
+            yield (n+1, PlacedObject(None, i.end, self.size))
+    
+    def __iter__(self):
+        """Iterate over everything, items and gaps, in the space."""
+        return (x[1] for x in self._enumerated_iter())
+    
+    def gaps(self):
+        """Iterate over all the gaps in the space."""
+        return (x for x in self if not x)
+        
+    def items(self):
+        """Iterate over all the actual items in the space."""
+        return (x for x in self if x)
+        
+    def add(self, obj, size, start=None):
+        """Add an object into the Space.
+        
+        Returns a PlacedObject, though this can usually be
+        ignored.  Raises IndexError if the object cannot be placed.
+        
+        start, if given, provides a fixed start location.
+        """
+        
+        for n, po in self._enumerated_iter():
+            # Only interested in gaps
+            if po:
+                continue
+                
+            if (start is not None):                
+                # With a fixed start location, we're only even interested
+                # in a particular gap.
+                if not (g.start <= start < end):
+                    continue
+                    
+                # Then see if we can place here.  We need a valid
+                # placement with the correct start.
+                placement = self._placer.place(obj, size, po)
+                if (placement is None) or (placement.start != start):
+                    raise IndexError("Could not place at fixed start {}".format(start))
+                    
+            else:
+                # With an unassigned start location, we try all the
+                # gaps until we get one we like.
+                placement = self._placer.place(obj, size, po)
+                if placement is None:
+                    continue
+                
+            # Alright, the placement is valid.  Store the item and
+            # call it a day.
+            self._items.insert(n, placement)
+            return placement
+            
+        # None of our gaps fit the criteria.  Try to resize for the
+        # new object and give it one more try.
+        try:
+            newgap = self._resizer.resize(self, size)
+            placement = self._placer.place(obj, size, newgap)
+            if (placement is not None) and (start is None or placement.start == start):
+                return placement
+        except NotImplementedError:
+            pass
+        raise IndexError('No room for object of size {}'format(size))
+        
+    def __str__(self):
+        """A string respresentation for debugging."""
+        items = ('{}({})'.format(obj, size) for obj, pos, size in self)
+        return ','.join(items)
 
 class FiniteSpace:
     """
