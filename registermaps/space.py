@@ -136,7 +136,7 @@ class BinaryPlacer:
         
         # Find the first alignment boundary using bit-twiddling tricks.
         start = (gap.start + amask) & ~amask
-        end = aligned_start + size
+        end = start + size
         if end <= gap.end:
             return PlacedObject(obj, start, size)
         return None            
@@ -181,6 +181,27 @@ class Space:
         """Iterate over all the actual items in the space."""
         return (x for x in self if x)
         
+    def _add_intl(self, obj, size, start, gap):
+        """Try to add this object into this gap."""
+        
+        if (start is not None):                
+            # With a fixed start location, we're only even interested
+            # in a particular gap.
+            if not (gap.start <= start < gap.end):
+                return None
+                
+            # Now resize this gap to start at the correct place.
+            newgap = PlacedObject(None, start, gap.end-start)
+                
+            # Then see if we can place here.  We need a valid
+            # placement with the correct start.
+            return self._placer.place(obj, size, newgap)
+            
+        else:
+            # With an unassigned start location, we try all the
+            # gaps until we get one we like.
+            return self._placer.place(obj, size, gap)
+        
     def add(self, obj, size, start=None):
         """Add an object into the Space.
         
@@ -190,48 +211,39 @@ class Space:
         start, if given, provides a fixed start location.
         """
         
+        # We may need to resize the space to even have a chance.
+        if start is not None:
+            end = start + size
+            need = end - self.size
+            if need > 0:
+                self._resizer.resize(self, need)
+        
         for n, po in self._enumerated_iter():
             # Only interested in gaps
             if po:
                 continue
-                
-            if (start is not None):                
-                # With a fixed start location, we're only even interested
-                # in a particular gap.
-                if not (po.start <= start < po.end):
-                    continue
-                    
-                # Now resize this gap to start at the correct place.
-                newgap = PlacedObject(None, start, po.end-start)
-                    
-                # Then see if we can place here.  We need a valid
-                # placement with the correct start.
-                placement = self._placer.place(obj, size, newgap)
-                if (placement is None) or (placement.start != start):
-                    raise IndexError("Could not place at fixed start {}".format(start))
-                    
-            else:
-                # With an unassigned start location, we try all the
-                # gaps until we get one we like.
-                placement = self._placer.place(obj, size, po)
-                if placement is None:
-                    continue
-                
-            # Alright, the placement is valid.  Store the item and
-            # call it a day.
-            self._items.insert(n, placement)
-            return placement
+            placement = self._add_intl(obj, size, start, po)
+            if placement is not None:
+                break
             
-        # None of our gaps fit the criteria.  Try to resize for the
-        # new object and give it one more try.
-        try:
-            newgap = self._resizer.resize(self, size)
-            placement = self._placer.place(obj, size, newgap)
-            if (placement is not None) and (start is None or placement.start == start):
-                return placement
-        except NotImplementedError:
-            pass
-        raise IndexError('No room for object of size {}'.format(size))
+        else:
+            # None of our gaps fit the criteria.  Try to resize for the
+            # new object and give it one more try.
+            try:
+                newgap = self._resizer.resize(self, size)
+                n = len(self._items)
+                placement = self._add_intl(obj, size, start, newgap)
+            except NotImplementedError:
+                raise IndexError('No room for object of size {}'.format(size))
+            
+        assert(placement is not None)
+        if (start is not None) and (placement.start != start):
+            raise IndexError("Could not place at fixed start {}".format(start))
+            
+        # Alright, the placement is valid.  Store the item and
+        # call it a day.
+        self._items.insert(n, placement)
+        return placement
         
     def __str__(self):
         """A string respresentation for debugging."""

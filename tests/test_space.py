@@ -3,38 +3,61 @@
 from registermaps import space
 import unittest
 
-class TestRegisterSpace(unittest.TestCase):
-	initial_items = (
-		('A', 4, 0),
-		('B', 1, 4),
-		('C', 2, 16),
-		('D', 2, 20)
+class BaseSpaceTest(unittest.TestCase):
+	size = None
+	placer = space.NoPlacer
+	resizer = space.NoResizer
+	
+	initial_items = ()
+	gaps = (
+		(0, 1),
 	)
 	
 	def setUp(self):
-		sp = space.Space(size=32, placer=space.LinearPlacer)
+		sp = space.Space(
+			size=self.size,
+			placer=self.placer,
+			resizer=self.resizer
+		)
 		for obj, size, start in self.initial_items:
 			sp.add(obj, size, start)
 		self.space = sp
 		
 	def testInitialItems(self):
-		for po, (obj, size, start) in zip(self.space.items(), self.initial_items):
+		items = list(self.space.items())
+		self.assertEqual(len(items), len(self.initial_items))
+		for po, (obj, size, start) in zip(items, self.initial_items):
 			self.assertTrue(po)
 			self.assertEqual(po.obj, obj)
 			self.assertEqual(po.size, size)
 			self.assertEqual(po.start, start)
 	
 	def testInitialGaps(self):
-		gaps = (
-			(5, 16),
-			(18, 20),
-			(22, 32)
-		)
-		for po, (start, end) in zip(self.space.gaps(), gaps):
+		gaps = list(self.space.gaps())
+		self.assertEqual(len(gaps), len(self.gaps))
+		for po, (start, end) in zip(gaps, self.gaps):
 			self.assertFalse(po)
 			self.assertEqual(po.start, start)
 			self.assertEqual(po.end, end)
 			
+
+class TestRegisterSpace(BaseSpaceTest):
+	"""Test a space that looks like Fields in a Register."""
+	
+	size = 32
+	placer = space.LinearPlacer
+	initial_items = (
+		('A', 4, 0),
+		('B', 1, 4),
+		('C', 2, 16),
+		('D', 2, 20)
+	)
+	gaps = (
+		(5, 16),
+		(18, 20),
+		(22, 32)
+	)
+	
 	def testStr(self):
 		s = str(self.space)
 		self.assertEqual(s, "A(4),B(1),None(11),C(2),None(2),D(2),None(10)")
@@ -66,6 +89,50 @@ class TestRegisterSpace(unittest.TestCase):
 		self.space.add('G', 10, 22)
 		last = self.space.last()
 		self.assertEqual(list(last), ['G', 22, 10])
+		
+class TestMMSpace(BaseSpaceTest):
+	"""Test a space that looks like Components in a MemoryMap."""
+	
+	initial_items = (
+		('A', 32, 0),
+		('B', 32, 32),
+		('C', 64, 64),
+		('D', 4, 128)
+	)
+	gaps = (
+		(132, 256),
+	)
+	
+	placer = space.BinaryPlacer
+	resizer = space.BinaryResizer
+	
+	def testInitialSize(self):
+		self.assertEqual(self.space.size, 256)
+	
+	def testFreeAdd(self):
+		s = self.space
+		po = s.add('E', 16)
+		self.assertEqual(po.start, 128+16)
+		po = s.add('F', 64)
+		self.assertEqual(po.start, 128+64)
+		po = s.add('G', 16)
+		self.assertEqual(po.start, 128+32)
+		
+		po = s.add('H', 64)
+		self.assertEqual(po.start, 256)
+		self.assertEqual(s.size, 512)
+		
+		# Make sure we got everything inserted in the right order
+		ordered = ''.join(po.obj for po in s.items())
+		self.assertEqual(ordered, 'ABCDEGFH')
+		
+	def testLast(self):
+		last = list(self.space.last())
+		self.assertListEqual(last, [None, 132, 256-132])
+		self.space.add('H', 64)
+		last = list(self.space.last())
+		self.assertListEqual(last, ['H', 128+64, 64])
+		
 
 if __name__ == '__main__':
 	unittest.main()
