@@ -119,7 +119,7 @@ class LinearPlacer:
     
     @staticmethod
     def place(obj, size, gap):
-        if gap.size > size:
+        if gap.size >= size:
             return PlacedObject(obj, gap.start, size)
         return None
     place.__doc__ = NoPlacer.place.__doc__

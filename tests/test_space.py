@@ -34,6 +34,38 @@ class TestRegisterSpace(unittest.TestCase):
 			self.assertFalse(po)
 			self.assertEqual(po.start, start)
 			self.assertEqual(po.end, end)
+			
+	def testStr(self):
+		s = str(self.space)
+		self.assertEqual(s, "A(4),B(1),None(11),C(2),None(2),D(2),None(10)")
+		
+	def testFreeAdd(self):
+		s = self.space
+		po = s.add('E', 10)
+		self.assertEqual(po.start, 5)
+		po = s.add('F', 10)
+		self.assertEqual(po.start, 22)
+		with self.assertRaises(IndexError):
+			po = s.add('G', 10)
+		po = s.add('G', 1)
+		self.assertEqual(po.start, 15)
+		
+		# Make sure we got everything inserted in the right order
+		ordered = ''.join(po.obj for po in s.items())
+		self.assertEqual(ordered, 'ABEGCDF')
+		
+		# Should be only one gap left
+		gaps = list(s.gaps())
+		self.assertEqual(len(gaps), 1)
+		self.assertEqual(gaps[0].start, 18)
+		self.assertEqual(gaps[0].size, 2)
+		
+	def testLast(self):
+		last = self.space.last()
+		self.assertEqual(list(last), [None, 22, 10])
+		self.space.add('G', 10, 22)
+		last = self.space.last()
+		self.assertEqual(list(last), ['G', 22, 10])
 
 if __name__ == '__main__':
 	unittest.main()
