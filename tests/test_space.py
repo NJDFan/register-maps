@@ -133,6 +133,29 @@ class TestMMSpace(BaseSpaceTest):
 		last = list(self.space.last())
 		self.assertListEqual(last, ['H', 128+64, 64])
 		
+class TestLinearResizer(BaseSpaceTest):
+	"""We have no use for this, but the LinearResizer shouldn't go
+	completely untested."""
+	
+	size = 32
+	placer = space.LinearPlacer
+	resizer = space.LinearResizer
+	initial_items = (
+		('A', 4, 0),
+		('B', 1, 4),
+		('C', 2, 16),
+		('D', 2, 20)
+	)
+	gaps = (
+		(5, 16),
+		(18, 20),
+		(22, 32)
+	)
+	
+	def testFreeAdd(self):
+		self.space.add('E', 100)
+		self.assertEqual(self.space.size, 122)
+		self.assertListEqual(list(self.space.last()), ['E', 22, 100])
 
 if __name__ == '__main__':
 	unittest.main()
