@@ -53,7 +53,7 @@ class PlacedObject:
         self.size = size
         
     def __bool__(self):
-        return self.obj
+        return self.obj is not None
         
     @property
     def end(self):
@@ -91,7 +91,7 @@ class LinearResizer(NoResizer):
             # The Space currently ends with an object
             spc.size += need
             return PlacedObject(None, last.end, need)
-    resize.__doc__ = NoResize.resize.__doc__
+    resize.__doc__ = NoResizer.resize.__doc__
             
 class BinaryResizer(NoResizer):
     """Adds enough space to keep a Space.size a power of 2."""
@@ -102,7 +102,7 @@ class BinaryResizer(NoResizer):
         newsize = spc.size + need
         spc.size = 2**((newsize-1).bit_length())
         return PlacedObject(None, oldsize, spc.size-oldsize)
-    resize.__doc__ = NoResize.resize.__doc__
+    resize.__doc__ = NoResizer.resize.__doc__
 
 class NoPlacer:
     """A null Placer, prevents adding objects to a Space."""
@@ -155,14 +155,19 @@ class Space:
         index preceeds the next true object if po is a gap.
         """
         
-        prev = PlacedObject(None, -1, 1)
-        for n, i in enumerate(self.items):
-            if i.start > prev.end:
-                yield (n, PlacedObject(None, prev.end, i.start))
-            yield (n, i)
-            prev = i
-        if i.end < self.size:
-            yield (n+1, PlacedObject(None, i.end, self.size))
+        # While we're empty it's a special case.
+        if not self._items:
+            yield (0, PlacedObject(None, 0, self.size))
+            
+        else:
+            prev = PlacedObject(None, -1, 1)
+            for n, i in enumerate(self._items):
+                if i.start > prev.end:
+                    yield (n, PlacedObject(None, prev.end, i.start-prev.end))
+                yield (n, i)
+                prev = i
+            if i.end < self.size:
+                yield (n+1, PlacedObject(None, i.end, self.size-i.end))
     
     def __iter__(self):
         """Iterate over everything, items and gaps, in the space."""
@@ -193,12 +198,15 @@ class Space:
             if (start is not None):                
                 # With a fixed start location, we're only even interested
                 # in a particular gap.
-                if not (g.start <= start < end):
+                if not (po.start <= start < po.end):
                     continue
+                    
+                # Now resize this gap to start at the correct place.
+                newgap = PlacedObject(None, start, po.end-start)
                     
                 # Then see if we can place here.  We need a valid
                 # placement with the correct start.
-                placement = self._placer.place(obj, size, po)
+                placement = self._placer.place(obj, size, newgap)
                 if (placement is None) or (placement.start != start):
                     raise IndexError("Could not place at fixed start {}".format(start))
                     
@@ -223,9 +231,22 @@ class Space:
                 return placement
         except NotImplementedError:
             pass
-        raise IndexError('No room for object of size {}'format(size))
+        raise IndexError('No room for object of size {}'.format(size))
         
     def __str__(self):
         """A string respresentation for debugging."""
         items = ('{}({})'.format(obj, size) for obj, _, size in self)
         return ','.join(items)
+
+    def last(self):
+        """Returns a PlacedObject for the end of the space, either a
+        gap or true object."""
+        
+        try:
+            last_item = self._items[-1]
+            if last_item.end == self.size:
+                return last_item
+            else:
+                return PlacedObject(None, last_item.end, self.size-last_item.end)
+        except IndexError:
+            return PlacedObject(None, 0, self.size)
