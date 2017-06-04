@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<component	name="IDENT" width="16"
+			xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+			xsi:noNamespaceSchemaLocation="../schema/hti_component.xsd">
+			
+	<desc>
+	Overhead registers for the V250.
+	</desc>
+	
+	<register name="VXI_MFR" offset="0" readOnly="true">
+		<desc> Highland ID: reads 65262, xFEEE </desc>  
+	</register>
+	
+	<register name="VXI_TYPE" offset="1" readOnly="true">
+		<desc> V250 module ID: reads 22250, 0x56EA  </desc>  
+	</register>
+	
+	<register name="SERIAL" offset= "3" readOnly= "true" >
+		<desc> Unit serial number </desc>  
+	</register>
+
+	<register name="ROM_ID" offset="4" readOnly ="true" >
+		<desc> Firmware ID </desc>  
+	</register>
+	
+	<register name="ROM_REV" offset="5" readOnly ="true">
+		<desc> Firmware revision </desc>  
+	</register>
+	
+	<register name="MCOUNT" offset="6" readOnly ="true" format="unsigned">
+		<desc> 1 KHz realtime counter </desc>  
+	</register> 
+	
+	<register name="DASH" offset = "7" readOnly ="true" >
+		<desc> Module version(dash) number </desc>  
+	</register>
+	
+	<register name="ULED" offset="12" >
+		<desc> User LED control </desc>  
+	</register>
+	
+	<register name= "MACRO" offset="14">
+		<desc> Macro control register </desc>
+	</register>
+	
+	<register name ="PARAM0" offset="16">
+		<desc> Macro parameter 0. The password for reading or writing
+		the Cal table </desc>
+	</register>
+	
+	<register name = "PARAM1" offset="17">
+		<desc> Macro parameter 1. Serial number of the unit, to write
+		to the Cal table</desc>
+	</register>
+	
+	<register name = "PARAM2" offset="18">
+		<desc> Macro parameter 2. The dash number of the unit, to
+		write the Cal table</desc>
+	</register>
+	
+	<register name = "PARAM3" offset="19">
+		<desc> Macro parameter 3. The password for the MACRO</desc>
+	</register>
+	
+</component>
