@@ -35,12 +35,6 @@ Once the XML files are written, the XmlReader class is used to turn
 each file into a memory representation, with all of the above classes
 derived from the HtiElement class.
 
-Having completed reading all of the XML files, the finish() method of
-each root object should be called.  This will recursively cause all
-of the objects under each root to be completed.  For most classes, the
-offset and size fields can be automatically determined during this
-process as well.
-
 The reading process will also create sourcefile and sourceline members
 for all contained classes.  This is useful both for generating outputs
 and for debugging.
@@ -49,487 +43,424 @@ Rob Gaddi, Highland Technology.
 May 31, 2011
 """
 
-import lxml
+import os.path
+from lxml import etree
+from collections import ChainMap
 from . import space
+
+def ceildiv(a, b):
+    """Returns ceil(a / b)."""
+    return (a+b-1)//b
+
+_tfmap = {
+    'YES' : True,
+    'NO' : False,
+    'TRUE' : True,
+    'FALSE' : False,
+    '1' : True,
+    '0' : False
+}
+def tf(text):
+    """Convert common representations of true and false to bool."""
+    try:
+        return _tfmap[text.upper()]
+    except KeyError:
+        raise ValueError('no boolean interpretation for ' + text)
+    except TypeError:
+        if isinstance(text, bool):
+            return text
+        elif isinstance(text, int):
+            return bool(text)
+        else:
+            raise
+            
+def _formatvalidator(text):
+    """Confirms that text is a valid field format."""
+    if text not in ('bits', 'signed', 'unsigned'):
+        raise ValueError('illegal format ' + text)
+    return text
+
+def toint(text):
+    """str to int that accepts "0x..." style strings"""
+
+def inherit(fieldname):
+    """Use as a default function to inherit a field from the parent."""
+    def inheritor(self):
+        return getattr(self.parent, fieldname)
+    return inheritor
 
 ########################################################################
 # XML Elements
 ########################################################################
 
+class XmlError(Exception):
+    def __init__(self, element, sourcefile='unknown file'):
+        self.element = element
+        self.sourcefile = sourcefile
+        
+    def __str__(self):
+        return "XML error in {} element: {}:{}".format(
+            self.element.tag, self.sourcefile, self.element.sourceline
+        )
+
 class HtiElement():
-    """Abstract base class for all elements."""
+    """Abstract base class for all elements.
     
-    def getsubclass(self, name):
-        return globals()[name]
+    Data members
+    ------------
     
-    def __init__(self, xml_element):
-        """Derive an HtiElement from an XML element."""
+    parent
+        The parent object for this element.
     
-        attrset = set(attributes)
+    space
+        A space filled with the children of this object
         
-        # Remap any attributes defined as not strings.
-        for a in (self.numeric_attributes & attrset):
-            attributes[a] = int(attributes[a], 0)
-                
-        for a in (self.boolean_attributes & attrset):
-            attributes[a] = self._boolean(attributes[a])
-        
-        # Check for any missing attributes.
-        missing = self.required_attributes - attrset
-        if missing:
-            raise InvalidStructureError('Missing required attribute ' + ', '.join(missing))
-                
-        # Check for any invalid values on the common ones
-        if attributes.get('readOnly', False) and attributes.get('writeOnly', False):
-            raise InvalidValueError('Cannot have both readOnly and writeOnly set true.')
-                
-        if attributes.get('format', 'bits') not in ('signed', 'unsigned', 'bits'):
-            raise InvalidValueError('Illegal format, must be signed, unsigned, or bits.')
-                
-        # Record tagname and attributes dictionary
-        dict.__init__(self, attributes)
-        
-        # Initialize the element's cdata and children to empty
-        self.cdata = ''
-        self.children = []
-        self.desc = []
+    description
+        A list of description text, one paragraph per element.
     
-    def __hash__(self):
-        return hash(self['name'])
+    Additionally, all XML-style attributes will be made available with 
+    the attribute syntax.
     
-    @staticmethod
-    def _boolean(value):
-        """Decode a Boolean value from XML into a real Boolean."""
-        if isinstance(value, basestring):
-            val = value.upper()
-            if val in ('0', 'FALSE', 'NO'):
-                return False
-            elif val in ('1', 'TRUE', 'YES'):
-                return True
-            else:
-                raise InvalidValue(val + " not a valid Boolean value.")
-        else:
-            return bool(value)
+    Subclass Overloads
+    ------------------
+    required, optional
+        dict of key : typefn pairs, such as {'name' : str, 'bits' : int}
+        typefn is any function that turns a single string input to the
+        correct type or raises ValueError.
+        
+        All subclasses require 'name' by default.  To avoid this, put
+        'name' : None in to the subclass required dict.
+        
+        The tf typefn is useful for turning XML-style boolean values
+        such as "true" into bools.
+        
+    defaults
+        dict of key : value pairs to set default values as appropriate
+        for optional arguments.  Value can also be a function of one
+        argument, which is self, in which case the function is called
+        and the attribute given the value returned.
+        
+        When using defaults, they will not be passed through the
+        typefn from optional.
+        
+    space_size, space_placer, space_resizer
+        Arguments for the Space.
+        
+    textasdesc
+        Default is True.  If True, bare text inside of the element will
+        become a child <description> element.
     
-    @_prettyError    
-    def _add_to_space(self, list):
-        """
-        Add all of the elements in the list into the space.
+    """
+    
+    _required = {
+        'name' : str
+    }
+    _optional = {
+        'format' : _formatvalidator,
+        'offset' : toint,
+        'size' : toint,
+        'readOnly' : tf,
+        'writeOnly' : tf,
+    }
+    _defaults = {
+        'readOnly' : inherit('readOnly'),
+        'writeOnly' : inherit('writeOnly'),
+    }
+    
+    # Overload these to manage the attributes
+    required = {}
+    optional = {}
+    defaults = {}
+    
+    # Overload these to manange the space
+    space_size = None
+    space_placer = space.NoPlacer
+    space_resizer = space.NoResizer
+    
+    # Overload as needed
+    textasdesc = True
+    ischild = True
+    
+    def __init__(self, xml_element, parent=None):
+        """Derive an HtiElement from an XML element.
         
-        Elements with fixed positions are placed first, then
-        elements with variable positions.
-        """
-        
-        def has_offset(x):
-            return 'offset' in x
+        May raise all manner of things, such as:
+            KeyError - An attribute is present but not appropriate
+            ValueError - An attribute cannot be converted to the right type
+            AttributeError - A required attribute is missing
             
-        for c in itertools.ifilter(has_offset, list):
-            self.space.add(c, c['size'], c['offset'])
-            
-        for c in itertools.ifilterfalse(has_offset, list):
-            self.space.add(c, c['size'])
-            
-        for ptr in self.space:
-            if ptr: ptr.obj['offset'] = ptr.pos
-    
-    @_prettyError    
-    def addChild(self, element):
-        """Add a child while parsing the XML tree."""
-        
-        if isinstance(element, Description):
-            self.desc.append(element)
-        else:
-            self.children.append(element)
-        
-    def getData(self):
-        return self.cdata
-        
-    def getDescription(self):
-        """Return an array of description paragraphs."""
-        return [d.getData() for d in self.desc]
-        
-    def getChildren(self, target=None):
-        """
-        Return the non-description children of an HtiElement node.
-        target, if provided, should be a class derived from HtiElement
-        or a tuple of such classes, listing those children that should
-        be returned.
-        """
-        if target:
-            return [c for c in self.children if isinstance(c, target)]
-        else:
-            return self.children
-    
-    @_prettyError        
-    def printTree(self, indent = '', target=sys.stdout):
-        """A dummy output formatter, useful for debugging."""
-        target.write("{0}{1} {2} @ {3}\n".format(
-                indent,
-                self.__class__.__name__,
-                self['name'],
-                self['offset']
-            ))
-        subindent = indent + "    "
-                
-        for c in self.desc:
-            c.printTree(indent = subindent, target = target)
-            
-        for c in self.children:
-            c.printTree(indent = subindent, target = target)
-            
-    def __repr__(self):
-        return "{0}({1})".format(self.__class__.__name__, dict.__repr__(self))
-    
-    @_prettyError
-    def finish(self):
-        """
-        Given that the element is now complete, fill in any missing data.
-        
-        This includes providing default attributes, generating FiniteSpaces
-        and allocating addresses to children, etc.
+        In any of these cases, it will be wrapped in an XmlError.
         """
         
-        self._pre_finish()
-        for c in self.children:
-            c.finish()
-        self._post_finish()
-            
-    def _pre_finish(self):
-        pass
+        self.parent = parent
+        if xml_element.sourcefile:
+            self._sourcefile = sourcefile
         
-    def _post_finish(self):
-        pass
-         
-    @_prettyError
-    def findParent(self, classname):
-        """
-        Search back through the hierarchy until a parent of the
-        specified class can be found.  Return None if no parent
-        of that class.
-        """
         try:
-            p = self.parent()
-            if isinstance(p, classname):
-                return p
-            else:
-                return p.findParent()
-        except AttributeError:
-            return None
+            self._processattributes(xml_element)
+            self._processchildren(xml_element)
+        except (KeyError, ValueError, AttributeError, XmlError) as e:
+            raise XmlError(xml_element, self.sourcefile) from e
     
-    @_prettyError        
-    def findChildren(self, classname):
-        """
-        Return a iterator for all children (recursively) that are an
-        instance of a given class.
-        """
+    def _processattributes(self, xmlelement):
+        """Attribute processing portion of initialization.""" 
         
-        for c in self.children:
-            for d in c.findChildren(classname):
-                yield d
-            if isinstance(c, classname):
-                yield c
-    
-    @_prettyError            
-    def byteWidth(self):
-        """Return the width of the HtiElement in bytes."""
+        cm = ChainMap(self.required, self.optional)
+        self._attrib = attrib = {}
         
-        return self['width'] / 8
-    
-    @_prettyError    
-    def findOffset(self):
-        """Return the total offset of the HtiElement, traced all the way to the root."""
-        
-        local_offset = self.get('offset', 0)
-        parent = self.parent
-        if parent:
-            return parent().findOffset() + local_offset
-        else:
-            # No parent, we've hit the top of the tree.
-            return local_offset
-            
-           
-class MemoryMap(HtiElement):
-    """A MemoryMap contains several Instances."""
-    numeric_attributes = set(['base'])
-    required_attributes = set(['name', 'base'])
-    
-    @staticmethod
-    def build_component_map(components):
-        """
-        Turns a list of Components into a component map for
-        the finish method.
-        
-        A component map is a dict full of Components.  The
-        key is the component name.  The value is an ElementInfo
-        structure representing the component.
-        
-        Keyword Arguments:
-        components - A list of Components. 
-        
-        Returns a component map of all the components.
-        """
-        
-        return dict([(c['name'], c) for c in components])
-        
-    def finish(self, component_map):
-        """
-        Locates and binds all Instances on the memory map.
-        
-        Instances need to be bound to Components, which is done by
-        passing in a component_map argument. (see build_component_map).
-        This causes each instance to be bound to the Component named
-        in the extern attribute.
-        
-        Following this, a P2Space is created, and all the Instances
-        are located in that space.
-        """
-        
-        # First, deal with binding the Instances
-        errors = []
-        
-        for inst in self.children:
+        # Read in all of the attributes present.
+        for k, v in xml_element.items():
             try:
-                compname = inst['extern']
-                inst.binding = component_map[compname]
-            except KeyError:
-                msg = "Unable to find component {c} to bind instance {i}.".format(
-                    c = compname, i = inst['name']
-                )
-                errors.append(MissingComponentError(msg))
-            else:
-                inst.finish()
-                    
-        if len(errors) > 1:
-            raise _Error(errors)
-        elif len(errors) == 1:
-            raise errors[0]
+                targettype = cm[k]
+                attrib[k] = targettype(v)
+            except ValueError:
+                raise ValueError("cannot make {}='{}' into {}".format(
+                    k, v, targettype.__name__
+                ))
             
-        # Use a space to reallocate all the instances.  In order to achieve
-        # the best packing, we'll sort the children in descending size order,
-        # ensuring that the largest peripherals get the first dibs on the largest
-        # holes in the space.
+        # Make sure we got all of the required attributes.
+        requiremap = ChainMap(self.required, self._required)
+        for k in requiremap:
+            if k not in attrib and requiremap[k] is not None:
+                raise AttributeError('required attribute {} not present'.format(k))
+                
+        # Make sure we got all of the optional attributes, pulling in
+        # defaults (and callable defaults) as needed.
+        defaultmap = ChainMap(self.defaults, self._defaults)
+        for k in ChainMap(self.optional, self._optional):
+            if k not in attrib:
+                try:
+                    d = defaultmap.get(k, None)
+                    d = d(self)
+                except TypeError:
+                    pass
+                attrib[k] = d
         
-        self.children.sort(key = lambda c: (-c['size'], c['name']))
-        self.space = space.P2Space()
+        # Check for any invalid values on the common ones
+        if attrib['readOnly'] and attrib['writeOnly']:
+            raise ValueError('Cannot have both readOnly and writeOnly set true.')
+                
+        if attrib.get('format', 'bits') not in ('signed', 'unsigned', 'bits'):
+            raise ValueError('Illegal format, must be signed, unsigned, or bits.')
+        
+    def _processchildren(self, xml_element):
+        """Child element processing portion of initialization."""
+        
+        self.beforechildren()
+        self.space = space.Space(
+            self.space_size, self.space_resizer, self.space_placer
+        )
+        self.description = []
+        self._textdesc(xml_element.text)
+                
+        for xmlchild in xml_element.iter(tag=etree.Element):
+            self._textdesc(xmlchild.tail)
+            htichild = createelement(xmlchild, parent=self)
+            if htichild.ischild:
+                po = self.space.add(htichild, htichild.size, htichild.offset)
+                htichild.place(po)
+                
+        self.afterchildren()
+        if self.size is None:
+            self.size = self.space.size
+        
+    def _textdesc(self, text):
+        """Append descriptive text or raise a ValueError as appropriate."""
+        if text:
+            if self.textasdesc:
+                self.description.append(text)
+            else:
+                raise ValueError('unexpected free text')
+        
+    def beforechildren(self):
+        """Hook to modify the object before the Space is created and filled."""
+        pass
+        
+    def afterchildren(self):
+        """Hook to modify the object after the Space is created and filled.
+        
+        If size is (still) None at the end of this, will be auto-set to space.size 
+        """
+        pass
+        
+    def place(self, po):
+        """Hook to notify a object it has been placed in its parent.
+        
+        po is a PlacedObject where obj is self.
+        """
+        assert(po.size == self.size)
+        if self._attrib['offset'] is None:
+            self._attrib['offset'] = po.start
+    
+    def __getattr__(self, attr):
         try:
-            self._add_to_space(self.children)
-        except space.BlockedSpaceError as e:
-            errstring = detab("""
-                Placement conflict in memory map.
-                Victim {v.obj[name]}:
-                    Attempted Location: {v.pos}
-                    Attempted Size:     {v.size}
-                Aggressor {a.obj[name]}:
-                    In Location: {a.pos}
-                    Of Size:     {a.size}
-                """)
-            raise _Error(str(e) + errstring.format(
-                v = e.attempt,
-                a = e.blocking))
+            return self._attrib[attr]
+        except KeyError:
+            raise AttributeError(attr)
             
+    @property
+    def sourcefile(self):
+        try:
+            return self._sourcefile
+        except AttributeError:
+            return self.parent.sourcefile
             
+class Description:
+    """Defines a Description element, which is a child of practically
+    any HtiElement.
+    
+    Upon its creation, a Description will insert itself into the
+    description list of its parent.
+    """
+    
+    # Description is entirely different than an HtiElement, and as
+    # such doesn't even inherit from HtiElement; it just duck types
+    # an __init__ with the same prototype and the ischild element.
+    
+    ischild = False
+    
+    def __init__(self, xml_element, parent):
+        if len(xml_element):
+            raise ValueError('description element cannot have children')
+        parent.description.append(xml_element.text)
+        
+class MemoryMap(HtiElement):
+    """A MemoryMap contains several Instances.
+    
+    When creating one, rather than a parent (which it will never have)
+    it must be given a dict associating Components with their names.
+    """
+    
+    optional = {
+        'base' : toint
+    }
+    defaults = {
+        'base' : 0x80000000
+    }
+    space_placer = space.BinaryPlacer
+    space_resizer = space.BinaryResizer
+    
+    def __init__(self, xml_element, components):
+        self.components = components
+        super().__init__(xml_element, parent=None)
+
 class Instance(HtiElement):
     """
     Instances bind Components to a MemoryMap.
     
-    The special member binding points to a Component that this
-    Instance represents a specific instantiation of.
+    They must be created after the corresponding Components if no
+    explicit size is given.
     """
     
-    numeric_attributes = set(['offset'])
-    required_attributes = set(['name', 'extern'])
+    optional = {
+        'offset' : toint,
+        'extern' : str
+    }
+    defaults = {
+        'extern' : lambda self: self.name,
+        'size' : lambda self: self.binding.size
+    }
     
-    def __init__(self, attributes):
-        HtiElement.__init__(self, attributes)
-        self.binding = None
-    
-    def __getitem__(self, key):
+    @property
+    def binding(self):
+        """Return the Component that this is an Instance of."""
         try:
-            return dict.__getitem__(self, key)
-        except KeyError:
-            if not self.binding: raise
-            return self.binding[key]
-            
-    def _pre_finish(self):
-        """The size of an Instance should be in bytes."""
-        self['size'] = self.binding['size'] * self.binding['width'] / 8;
-    
+            name = self.extern
+        except AttributeError:
+            name = self.name
+        return self.components[name]
+        
+    @property
+    def components(self):
+        return self.parent.components
+        
 class Component(HtiElement):
     """
     Components represent entire logic blocks of several Registers.
     They can be tied to a MemoryMap by using Instances.
-    
-    >>> comp = Component({'name' : 'BOB', 'width' : 32})
-    
-    After calling comp.finish(), a Component will add the
-    member comp.space, a FiniteSpace which enumerates
-    all of the registers in comp.
-
     """
-    numeric_attributes = set(['width', 'size'])
-    required_attributes = set(['name', 'width'])
     
-    def _pre_finish(self):
-        if not 'readOnly' in self:
-            self['readOnly'] = False
-            
-        if not 'writeOnly' in self:
-            self['writeOnly'] = False
-            
-    def _post_finish(self):
-        # Use a space to reallocate all the registers
-        if 'size' in self:
-            self.space = space.FiniteSpace(self['size'])
-        else:
-            self.space = space.P2Space()
-        
-        self._add_to_space(self.children)
-        self['size'] = self.space.size()
-        
-    def printTree(self, indent='', target=sys.stdout):
-        self['offset'] = 'ROOT'
-        HtiElement.printTree(self, indent, target)
- 
+    required = {
+        'width' : toint
+    }
+    
+    space_placer = space.BinaryPlacer
+    
+    def beforechildren(self):
+        if self.size is None:
+            self.space_resizer = space.BinaryResizer
+    
 class Register(HtiElement):
     """
     Registers are contained within components.
-    
-    >>> reg = Register({'name' : 'BOB'})
-    
-    After calling reg.finish(), a Register will add the
-    member reg.space, a FiniteSpace which enumerates
-    all of the fields in reg.
     """
-    numeric_attributes = set(['offset', 'size', 'width'])
     
-    def _pre_finish(self):
-        """Inherit necessary attributes."""
-        for attr in ['width', 'readOnly', 'writeOnly']:
-            if attr not in self:
-                self[attr] = self.parent()[attr]
-                
-        if 'size' not in self:
-            self['size'] = 1
-            
-        if 'format' not in self:
-            self['format'] = 'bits'
-                
-    def _post_finish(self):
-        """
-        Create the space member, and use it to place any
-        remaining fields.  Also, create the has_fields
-        member.
-        """
-        regsize = self.parent()['width'] * self['size']
+    optional = {
+        'width' : toint,
+        'format' : _formatvalidator
+    }
+    default = {
+        'width' : inherit('width'),
+        'size'  : 1,
+        'format' : 'bits'
+    }
+    space_placer = space.LinearPlacer
+    
+    def beforechildren(self):
+        # The space needs to be sized in bits rather than words.
+        self.space_size = self.width * self.size
         
-        self.has_fields = bool(self.children)
-        if self.has_fields:
-            children = self.children
-        elif (self['width'] < regsize):
-            fake_field = Field({
-                            'name'      : self['name'],
-                            'readOnly'  : self['readOnly'],
-                            'writeOnly' : self['writeOnly'],
-                            'format'    : self['format']
-                            })
-                            
-            fake_field['offset'] = 0
-            fake_field['size'] = self['width']
-            fake_field.parent = weakref.ref(self)
-            fake_field.desc = self.desc
-            fake_field.finish()
-            children = [fake_field]
-            
-            # Having created the fake field, there's no reason to
-            # keep having a width that's, from the bus point of view,
-            # not true.
-            self['width'] = regsize
-            
-        else:
-            children = None
-        
-        if children:
-            self.space = space.FiniteSpace(regsize)
-            self._add_to_space(children)
-        else:
-            self.space = None
-            
-            
 class Field(HtiElement):
+    """Fields represent bit fields and contained within Registers.
+    
+    They may hold enumeration values in a Space.
     """
-    Fields represent bit fields and contained within Registers.
+
+    optional = {
+        'format' : _formatvalidator
+    }
+    default = {
+        'format' : 'bits'
+    }
     
-    >>> fld = Field({'name' : 'BOB'})
+    space_placer = space.LinearPlacer
     
-    After calling fld.finish(), a Field will add the
-    member fld.space, a FiniteSpace which covers all
-    the enumeration values in the field.  fld.space is
-    None for an unenumerated field.
-    """
-    
-    numeric_attributes = set(['offset', 'size'])
-    
-    def _pre_finish(self):
-        """Inherit necessary attributes."""
-        for attr in ['width', 'readOnly', 'writeOnly']:
-            if attr not in self:
-                self[attr] = self.parent()[attr]
-                
-        if 'size' not in self:
-            self['size'] = 1
-            
-        if 'format' not in self:
-            self['format'] = 'bits'
-            
-    def _post_finish(self):
-        """Bind values to unvalued enumerations."""
-        if self.children:
-            self.space = space.FiniteSpace(2 ** self['size'])
-            
-            def has_value(c):
-                return 'value' in c
-                
-            for e in itertools.ifilter(has_value, self.children):
-                self.space.add(e, 1, e['value'])
-            for e in itertools.ifilterfalse(has_value, self.children):
-                self.space.add(e, 1, e['value'])
-                
-            for e in self.space:
-                if e: e.obj['value'] = e.pos
-                
+    def beforechildren(self):
+        """Allow the enumeration space to operate on possible value
+        of a field of our length."""
+        if self.size is None:
+            self.space_size = None
+            self.space_resizer = space.LinearResizer
         else:
-            self.space = None
-                
+            self.space_size = 2**self.size
+            
+    def afterchildren(self):
+        """Take size from the children if necessary."""
+        if self.size is None:
+            if self.space.size <= 1:
+                self.size = 1
+            else:
+                self.size = (self.space.size - 1).bit_length()
             
 class Enum(HtiElement):
     """Enums can be used to better define fields."""
-    numeric_attributes = set(['value'])
     
-    def printTree(self, indent = '', target=sys.stdout):
-        target.write("{0}{1} {2} = {3}\n".format(
-                indent,
-                self.__class__.__name__,
-                self['name'],
-                self['value']
-            ))
+    # Enums behave differently than anything else, so we have to 
+    # override the default _optional and _defaults
     
-class Description(HtiElement):
-    """Descriptive text for any element."""
+    _optional = {
+        'value' : toint,
+    }
+    _defaults = {}
     
-    required_attributes = set()
-    whitespace_normalizer = re.compile(r'\s+')
-    tw = textwrap.TextWrapper()
+    size = 1
+    space_size = 0
     
-    def getData(self):
-        """Return CDATA with whitespace normalized."""
-        return self.whitespace_normalizer.sub(' ', self.cdata.strip())
-        
-    def printTree(self, indent = '', target=sys.stdout):
-        self.tw.initial_indent = indent
-        self.tw.subsequent_indent = indent
-        
-        target.write(self.tw.fill('"' + self.getData() + '"'))
-        target.write("\n")
+    def place(self, po):
+        if self.value is None:
+            self.value = po.start
+        assert(self.value == po.start)
+        assert(self.size == po.size)
     
 class Array(HtiElement):
     """Arrays represent repeated entities.
@@ -570,82 +501,107 @@ class RegisterArray(Array):
 class InstanceArray(Array):
     pass
 
+# Build a dict crossreferencing XML tags to HtiElement subclasses.
+_classes_by_name = { c.__name__.lower() : c for c in HtiElement.__subclasses__() }
+_classes_by_name['desc'] = Description
+_classes_by_name['description'] = Description
+def _classlookup(name):
+    return _classes_by_name[name]
+
+def createelement(xml, parent=None):
+    """Create an HtiElement from an XML element."""
+    
+    kls = _classlookup(xml.tag)
+    obj = kls(self, xmlchild)
+    return obj
+
 ########################################################################
 # XML File Parser
 ########################################################################
 
-class XmlReader:
-    """XML parser for register map files."""
-    elements = (    Component, Register, Description, Field, Enum,
-                    MemoryMap, Instance,
-                    RegisterArray, InstanceArray
-                )
-    element_map = dict( [(c.__name__.lower(), c) for c in elements] + [('desc', Description)])
+class XmlParser:
+    """Used to parse one or more source files or directories into
+    a collection of Components and MemoryMaps.
+    """
     
     def __init__(self):
-        self.root = None
-        self.nodeStack = []
-        
-    def startElement(self, name, attributes):
-        'Expat start element event handler'
-        
-        # Determine the element type and instantiate it
-        ET = self.element_map[name]
-        
-        # Instantiate an HtiElement object
-        element = ET(attributes)
-        element.sourcefile = self.filename
-        element.sourceline = self.parser.CurrentLineNumber
-        
-        # Push element onto the stack and make it a child of parent
-        if self.nodeStack:
-            parent = self.nodeStack[-1]
-            parent.addChild(element)
-            element.parent = weakref.ref(parent)
-        else:
-            self.root = element
-        self.nodeStack.append(element)
-        
-    def endElement(self, name):
-        'Expat end element event handler'
-        self.nodeStack.pop()
-        
-    def characterData(self, data):
-        'Expat character data event handler'
-        if data.strip():
-            data = data
-            element = self.nodeStack[-1]
-            element.cdata += data
+        self.components = {}
+        self.memorymaps = {}
+        self.componentxml = []
+        self.mmxml = []
             
-    def Parse(self, filename):
-        self.filename = filename
+    def _readXml(filename):
+        """Retreive an ElementTree from a filename."""
+        parser = etree.Parser()
+        return parser.parse(filename)
         
-        # Create an Expat parser
-        self.parser = expat.ParserCreate()
-        # Set the Expat event handlers to our methods
-        self.parser.StartElementHandler = self.startElement
-        self.parser.EndElementHandler = self.endElement
-        self.parser.CharacterDataHandler = self.characterData
+    def analyzeDirectory(path):
+        """Parse all .xml file in a directory.
         
-        # Parse the XML File
-        try:
-            ParserStatus = self.parser.Parse(open(filename).read(), 1)
-            
-        except _Error as e:
-            error = e.args[0] + '\nAt line {0} of {1}'.format(self.parser.CurrentLineNumber, filename)
-            raise e.__class__(error)
-                        
-        return self.root
+        Appends to the componentxml and mmxml fields.
         
-def _tree_printer(argv=None):
-    if argv is None:
-        argv = sys.argv
+        Any XML files not rooted in a component or memorymap will throw
+        an error.
+        
+        path supports the **/ syntax, meaning "this directory and all
+        subdirectories."
+        """
+        
+        # Figure out which files code components and which code
+        # memorymaps.
+        #
+        globber = glob.iglob(os.path.join(path, '*.xml'), recursive=True)
+        treesorter = {
+            'component' : self.componentxml,
+            'memorymap' : self.mmxml
+        }
+        for fn in globber:
+            try:
+                t = _readXml(fn)
+                tag = t.getroot().tag
+                treesorter[tag].append(t)
+            except KeyError:
+                raise XmlError(t, fn) from ValueError('document root must be component or memorymap')
     
-    parser = XmlReader()
-    root_element = parser.Parse(argv[1])
-    root_element.finish()
-    root_element.printTree()
-    return 0
-    
-if __name__ == "__main__":
-    sys.exit(_tree_printer())
+    def elaborate():
+        """Translates XML into HtiElements.
+        
+        .componentxml will be turned into .components (and cleared)
+        .mmxml will be turned into .memorymaps (and cleared)
+        """
+        
+        # Translate the components
+        for c in self.componentxml:
+            comp = Component(c, parent=None)
+            if comp.name in self.components:
+                raise ValueError(
+                    'Multiple definitions for component {}, {} and {}'.format(
+                        comp.name,
+                        self.components[comp.name].sourcefile,
+                        comp.sourcefile
+                    ))
+            self.components[comp.name] = comp
+        
+        # Translate the memorymaps
+        for m in self.mmxml:
+            mm = MemoryMap(m, compoments=self.components)
+            if mm.name in self.memorymaps:
+                raise ValueError(
+                    'Multiple definitions for memorymap {}, {} and {}'.format(
+                        mm.name,
+                        self.memorymaps[mm.name].sourcefile,
+                        mm.sourcefile
+                    ))
+            self.memorymaps[mm.name] = mm
+        
+        self.componentxml.clear()
+        self.mmxml.clear()
+        
+    def processDirectory(path):
+        """Parses all .xml files in a directory and turns then into HtiElements.
+        
+        This combines analyzeDirectory and elaborate into one call for the
+        common case where all sources are in the same directory.
+        """
+        self.analyzeDirectory(path)
+        self.elaborate()

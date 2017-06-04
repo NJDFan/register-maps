@@ -50,8 +50,8 @@ setup(
 
         # Indicate who your project is intended for
         'Intended Audience :: Developers',
-		'Topic :: Software Development :: Code Generators',
-		'Topic :: Software Development :: Documentation',
+        'Topic :: Software Development :: Code Generators',
+        'Topic :: Software Development :: Documentation',
 
         # Pick your license as you wish (should match "license" above)
         'License :: OSI Approved :: GNU General Public License v3 (GPLv3)',
@@ -79,8 +79,8 @@ setup(
     # requirements files see:
     # https://packaging.python.org/en/latest/requirements.html
     install_requires=[
-		#'lxml'
-	],
+        #'lxml'
+    ],
 
     # List additional groups of dependencies here (e.g. development
     # dependencies). You can install these using the following syntax,

@@ -7,6 +7,8 @@ Use XML files to describe register maps; auto-generate C, VHDL, Python, and HTML
 XML Elements
 ============
 
+Additionally, all elements other than Description have required name attribute.
+
 Component
 ---------
 
