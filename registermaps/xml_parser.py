@@ -44,6 +44,7 @@ May 31, 2011
 """
 
 import os.path
+import glob
 from lxml import etree
 from collections import ChainMap
 from . import space
@@ -82,6 +83,7 @@ def _formatvalidator(text):
 
 def toint(text):
     """str to int that accepts "0x..." style strings"""
+    return int(text, base=0)
 
 def inherit(fieldname):
     """Use as a default function to inherit a field from the parent."""
@@ -94,13 +96,16 @@ def inherit(fieldname):
 ########################################################################
 
 class XmlError(Exception):
-    def __init__(self, element, sourcefile='unknown file'):
+    def __init__(self, msg, element, sourcefile='unknown file'):
+        self.msg = msg
         self.element = element
         self.sourcefile = sourcefile
         
     def __str__(self):
-        return "XML error in {} element: {}:{}".format(
-            self.element.tag, self.sourcefile, self.element.sourceline
+        return "XML error in {} element at {}:{}: {}".format(
+            self.element.tag,
+            self.sourcefile, self.element.sourceline,
+            self.msg
         )
 
 class HtiElement():
@@ -156,7 +161,6 @@ class HtiElement():
         'name' : str
     }
     _optional = {
-        'format' : _formatvalidator,
         'offset' : toint,
         'size' : toint,
         'readOnly' : tf,
@@ -181,7 +185,7 @@ class HtiElement():
     textasdesc = True
     ischild = True
     
-    def __init__(self, xml_element, parent=None):
+    def __init__(self, xml_element, parent=None, sourcefile='unknown file'):
         """Derive an HtiElement from an XML element.
         
         May raise all manner of things, such as:
@@ -193,26 +197,32 @@ class HtiElement():
         """
         
         self.parent = parent
-        if xml_element.sourcefile:
-            self._sourcefile = sourcefile
+        self.sourcefile = sourcefile
+        self.sourceline = xml_element.sourceline
         
         try:
             self._processattributes(xml_element)
             self._processchildren(xml_element)
         except (KeyError, ValueError, AttributeError, XmlError) as e:
-            raise XmlError(xml_element, self.sourcefile) from e
+            import traceback
+            traceback.print_exc()
+            raise XmlError(str(e), xml_element, self.sourcefile) from e
     
     def _processattributes(self, xmlelement):
         """Attribute processing portion of initialization.""" 
         
-        cm = ChainMap(self.required, self.optional)
+        cm = ChainMap(self.required, self.optional, self._required, self._optional)
         self._attrib = attrib = {}
         
         # Read in all of the attributes present.
-        for k, v in xml_element.items():
+        for k, v in xmlelement.items():
             try:
                 targettype = cm[k]
                 attrib[k] = targettype(v)
+            except KeyError:
+                raise KeyError("attribute {} not supported on element {}".format(
+                    k, xmlelement.tag
+                ))
             except ValueError:
                 raise ValueError("cannot make {}='{}' into {}".format(
                     k, v, targettype.__name__
@@ -240,8 +250,8 @@ class HtiElement():
         if attrib['readOnly'] and attrib['writeOnly']:
             raise ValueError('Cannot have both readOnly and writeOnly set true.')
                 
-        if attrib.get('format', 'bits') not in ('signed', 'unsigned', 'bits'):
-            raise ValueError('Illegal format, must be signed, unsigned, or bits.')
+        # if attrib.get('format', 'bits') not in ('signed', 'unsigned', 'bits'):
+        #    raise ValueError('Illegal format, must be signed, unsigned, or bits.')
         
     def _processchildren(self, xml_element):
         """Child element processing portion of initialization."""
@@ -253,9 +263,12 @@ class HtiElement():
         self.description = []
         self._textdesc(xml_element.text)
                 
-        for xmlchild in xml_element.iter(tag=etree.Element):
+        for xmlchild in xml_element:
             self._textdesc(xmlchild.tail)
-            htichild = createelement(xmlchild, parent=self)
+            
+            # Create a new child element
+            kls = _classlookup(xmlchild.tag)
+            htichild = kls(xmlchild, parent=self, sourcefile=self.sourcefile)
             if htichild.ischild:
                 po = self.space.add(htichild, htichild.size, htichild.offset)
                 htichild.place(po)
@@ -298,13 +311,6 @@ class HtiElement():
         except KeyError:
             raise AttributeError(attr)
             
-    @property
-    def sourcefile(self):
-        try:
-            return self._sourcefile
-        except AttributeError:
-            return self.parent.sourcefile
-            
 class Description:
     """Defines a Description element, which is a child of practically
     any HtiElement.
@@ -319,7 +325,7 @@ class Description:
     
     ischild = False
     
-    def __init__(self, xml_element, parent):
+    def __init__(self, xml_element, parent, sourcefile='unknown file'):
         if len(xml_element):
             raise ValueError('description element cannot have children')
         parent.description.append(xml_element.text)
@@ -332,17 +338,22 @@ class MemoryMap(HtiElement):
     """
     
     optional = {
-        'base' : toint
+        'base' : toint,
+        'readOnly' : tf,
+        'writeOnly' : tf,
+        '{http://www.w3.org/2001/XMLSchema-instance}noNamespaceSchemaLocation' : str
     }
     defaults = {
-        'base' : 0x80000000
+        'base' : 0x80000000,
+        'readOnly' : False,
+        'writeOnly' : False,
     }
     space_placer = space.BinaryPlacer
     space_resizer = space.BinaryResizer
     
-    def __init__(self, xml_element, components):
+    def __init__(self, xml_element, components, sourcefile='unknown file'):
         self.components = components
-        super().__init__(xml_element, parent=None)
+        super().__init__(xml_element, parent=None, sourcefile=sourcefile)
 
 class Instance(HtiElement):
     """
@@ -383,6 +394,15 @@ class Component(HtiElement):
     required = {
         'width' : toint
     }
+    optional = {
+        'readOnly' : tf,
+        'writeOnly' : tf,
+        '{http://www.w3.org/2001/XMLSchema-instance}noNamespaceSchemaLocation' : str
+    }
+    defaults = {
+        'readOnly' : False,
+        'writeOnly' : False,
+    }
     
     space_placer = space.BinaryPlacer
     
@@ -399,7 +419,7 @@ class Register(HtiElement):
         'width' : toint,
         'format' : _formatvalidator
     }
-    default = {
+    defaults = {
         'width' : inherit('width'),
         'size'  : 1,
         'format' : 'bits'
@@ -419,7 +439,7 @@ class Field(HtiElement):
     optional = {
         'format' : _formatvalidator
     }
-    default = {
+    defaults = {
         'format' : 'bits'
     }
     
@@ -508,13 +528,6 @@ _classes_by_name['description'] = Description
 def _classlookup(name):
     return _classes_by_name[name]
 
-def createelement(xml, parent=None):
-    """Create an HtiElement from an XML element."""
-    
-    kls = _classlookup(xml.tag)
-    obj = kls(self, xmlchild)
-    return obj
-
 ########################################################################
 # XML File Parser
 ########################################################################
@@ -530,12 +543,12 @@ class XmlParser:
         self.componentxml = []
         self.mmxml = []
             
-    def _readXml(filename):
+    def _readXml(self, filename):
         """Retreive an ElementTree from a filename."""
-        parser = etree.Parser()
-        return parser.parse(filename)
+        parser = etree.XMLParser(remove_comments=True, remove_pis=True)
+        return etree.parse(filename, parser)
         
-    def analyzeDirectory(path):
+    def analyzeDirectory(self, path):
         """Parse all .xml file in a directory.
         
         Appends to the componentxml and mmxml fields.
@@ -557,13 +570,13 @@ class XmlParser:
         }
         for fn in globber:
             try:
-                t = _readXml(fn)
+                t = self._readXml(fn)
                 tag = t.getroot().tag
-                treesorter[tag].append(t)
+                treesorter[tag].append((fn, t))
             except KeyError:
-                raise XmlError(t, fn) from ValueError('document root must be component or memorymap')
+                raise XmlError('document root must be component or memorymap', t, fn)
     
-    def elaborate():
+    def elaborate(self):
         """Translates XML into HtiElements.
         
         .componentxml will be turned into .components (and cleared)
@@ -571,8 +584,8 @@ class XmlParser:
         """
         
         # Translate the components
-        for c in self.componentxml:
-            comp = Component(c, parent=None)
+        for fn, c in self.componentxml:
+            comp = Component(c.getroot(), parent=None, sourcefile=fn)
             if comp.name in self.components:
                 raise ValueError(
                     'Multiple definitions for component {}, {} and {}'.format(
@@ -583,8 +596,8 @@ class XmlParser:
             self.components[comp.name] = comp
         
         # Translate the memorymaps
-        for m in self.mmxml:
-            mm = MemoryMap(m, compoments=self.components)
+        for fn, m in self.mmxml:
+            mm = MemoryMap(m.getroot(), components=self.components, sourcefile=fn)
             if mm.name in self.memorymaps:
                 raise ValueError(
                     'Multiple definitions for memorymap {}, {} and {}'.format(
@@ -597,7 +610,7 @@ class XmlParser:
         self.componentxml.clear()
         self.mmxml.clear()
         
-    def processDirectory(path):
+    def processDirectory(self, path):
         """Parses all .xml files in a directory and turns then into HtiElements.
         
         This combines analyzeDirectory and elaborate into one call for the
