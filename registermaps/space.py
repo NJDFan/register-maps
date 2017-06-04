@@ -148,6 +148,9 @@ class Space:
     Placer class.  Without providing a Resizer, the initial size is
     the size the Space will always be.  Without providing a Placer
     no objects can be placed in the Space, making it pretty useless.
+    
+    In boolean context, Space is True if there are any items stored in 
+    it, or False if the space is completely empty.
     """
     
     def __init__(self, size=None, resizer=NoResizer, placer=NoPlacer):
@@ -155,6 +158,10 @@ class Space:
         self._resizer = resizer
         self._placer = placer
         self._items = []
+    
+    def __bool__(self):
+        """"""
+        return bool(self._items)
     
     def _enumerated_iter(self):
         """Generate (idx, po) pairs of index and PlacedObject. 
@@ -269,3 +276,56 @@ class Space:
                 return PlacedObject(None, last_item.end, self.size-last_item.end)
         except IndexError:
             return PlacedObject(None, 0, self.size)
+            
+    def at(self, index):
+        """Returns the PlacedObject that encompasses index.
+        
+        Can also be called as space[index] where index is an int.
+        
+        It will be true that for PlacedObject obj,
+        obj.start <= index < obj.end
+        """
+        
+        if index < 0:
+            index += self.size
+        
+        for po in self:
+            if po.start <= index < po.end:
+                return index
+        raise IndexError(index)
+        
+    def takeslice(self, slc):
+        """Returns a list of PlacedObjects spanning the slice slc.  The 
+        start and end object may be truncated such that the start will 
+        start at the slice start and the end ends at the slice end.
+        
+        Can also be called as space[slc] where slc is a slice.
+        """
+        
+        # First, reframe the slice.
+        start, stop, stride = slc.indices(self.size)
+        if stride != 1:
+            raise ValueError('slice stride not supported')
+        
+        ret = []
+        for po in self:
+            start = max(po.start, start)
+            end = min(po.end, stop)
+            if start < end:
+                ret.append(PlacedObject(po.obj, start, end-start))
+                    
+        return ret
+        
+    def __getitem__(self, idx):
+        """Shorthand for space.at(idx) or space.takeslice(idx) based
+        on idx.
+        """
+        
+        if isinstance(idx, int):
+            return self.at(idx)
+        elif isinstance(idx, slice):
+            return self.takeslice(idx)
+        else:
+            raise ValueError("can't index {} with {}".format(
+                type(self).__name__, type(idx).__name__
+            ))

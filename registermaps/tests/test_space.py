@@ -41,6 +41,21 @@ class BaseSpaceTest(unittest.TestCase):
 			self.assertEqual(po.end, end)
 			
 
+class TestSpaceBoolean(BaseSpaceTest):
+	
+	placer = space.LinearPlacer
+	resizer = space.LinearResizer
+	
+	def testEmpty(self):
+		self.assertFalse(self.space)
+		
+	def testNonEmpty(self):
+		sp = self.space
+		sp.add('A', 4)
+		self.assertTrue(sp)
+		self.assertEqual(sp.size, 4)
+		self.assertListEqual(list(list(s) for s in sp), [['A', 0, 4]])
+
 class TestRegisterSpace(BaseSpaceTest):
 	"""Test a space that looks like Fields in a Register."""
 	
@@ -108,6 +123,18 @@ class TestMMSpace(BaseSpaceTest):
 	
 	def testInitialSize(self):
 		self.assertEqual(self.space.size, 256)
+		
+	def testSubspace(self):
+		# Start midway through C, end after D.
+		sp = self.space[120:140]
+		shouldbe = [
+			('C', 120, 8),
+			('D', 128, 4),
+			(None, 132, 8)
+		]
+		self.assertEqual(len(sp), len(shouldbe))
+		for a, b in zip(sp, shouldbe):
+			self.assertTupleEqual(tuple(a), b)
 	
 	def testFreeAdd(self):
 		s = self.space
@@ -161,6 +188,6 @@ class TestLinearResizer(BaseSpaceTest):
 		self.space.add('E', 100)
 		self.assertEqual(self.space.size, 122)
 		self.assertListEqual(list(self.space.last()), ['E', 22, 100])
-
+		
 if __name__ == '__main__':
 	unittest.main()
