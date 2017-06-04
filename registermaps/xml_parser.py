@@ -43,6 +43,7 @@ Rob Gaddi, Highland Technology.
 May 31, 2011
 """
 
+import re
 import os.path
 import glob
 from lxml import etree
@@ -277,11 +278,18 @@ class HtiElement():
         if self.size is None:
             self.size = self.space.size
         
+    def _adddesc(self, text):
+        """Append a description element, cleaning whitespace."""
+        text = text.strip()
+        if text:
+            text = re.sub('\s+', ' ', text)
+            self.description.append(text)
+        
     def _textdesc(self, text):
         """Append descriptive text or raise a ValueError as appropriate."""
         if text:
             if self.textasdesc:
-                self.description.append(text)
+                self._adddesc(text)
             else:
                 raise ValueError('unexpected free text')
         
@@ -328,7 +336,7 @@ class Description:
     def __init__(self, xml_element, parent, sourcefile='unknown file'):
         if len(xml_element):
             raise ValueError('description element cannot have children')
-        parent.description.append(xml_element.text)
+        parent._adddesc(xml_element.text.strip())
         
 class MemoryMap(HtiElement):
     """A MemoryMap contains several Instances.
