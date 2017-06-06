@@ -83,7 +83,7 @@ class TestRegisterSpace(BaseSpaceTest):
 		self.assertEqual(po.start, 5)
 		po = s.add('F', 10)
 		self.assertEqual(po.start, 22)
-		with self.assertRaises(IndexError):
+		with self.assertRaises(ValueError):
 			po = s.add('G', 10)
 		po = s.add('G', 1)
 		self.assertEqual(po.start, 15)
@@ -161,7 +161,8 @@ class TestMMSpace(BaseSpaceTest):
 		self.assertListEqual(last, ['H', 128+64, 64])
 		
 	def testStartLegality(self):
-		with self.assertRaises(IndexError):
+		self.space.enforce_rules_on_fixed = True
+		with self.assertRaises(ValueError):
 			self.space.add('E', 32, 128+48)
 		self.space.add('E', 32, 128+64)
 		

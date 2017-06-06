@@ -63,6 +63,11 @@ class PlacedObject:
     def __getitem__(self, idx):
         attr = ['obj', 'start', 'size'][idx]
         return getattr(self, attr)
+        
+    def __repr__(self):
+        return "{0}({1!r}, start={2}, size={3})".format(
+            type(self).__name__, self.obj, self.start, self.size
+        )
 
 class NoResizer:
     """A null resizer; prevents resizing a Space."""
@@ -74,7 +79,7 @@ class NoResizer:
         spc - The space to be resized.
         need - The amount of space needed in the resize.
         """
-        raise NotImplementedError("Resizing this space not allowed.")
+        raise ValueError("Resizing this space not allowed.")
     
 class LinearResizer(NoResizer):
     """Adds only as much space as needed."""
@@ -97,10 +102,9 @@ class BinaryResizer(NoResizer):
     
     @staticmethod
     def resize(spc, need):
-        oldsize = spc.size
         newsize = spc.size + need
         spc.size = 2**((newsize-1).bit_length())
-        return PlacedObject(None, oldsize, spc.size-oldsize)
+        return spc.last()
     resize.__doc__ = NoResizer.resize.__doc__
 
 class NoPlacer:
@@ -111,7 +115,12 @@ class NoPlacer:
         
         Returns a new PlacedObject or None if it won't fit.
         """
-        raise NotImplementedError("Not allowed to place in this Space.")
+        raise ValueError("Not allowed to place in this Space.")
+       
+    @staticmethod
+    def validate(po):
+        """Is a PlacedObject legal by these placer rules?"""
+        raise ValueError("Not allowed to place in this Space.")
         
 class LinearPlacer:
     """Place an object in the first place it will fit."""
@@ -121,16 +130,25 @@ class LinearPlacer:
         if gap.size >= size:
             return PlacedObject(obj, gap.start, size)
         return None
+        
+    @staticmethod
+    def validate(po):
+        return True
+        
     place.__doc__ = NoPlacer.place.__doc__
+    validate.__doc__ = NoPlacer.validate.__doc__
         
 class BinaryPlacer:
     """Place an object on a power-of-2 boundary based on size."""
     
     @staticmethod
+    def _alignment(size):
+        """Return the next power of 2 greater than or equal to size."""
+        return (1 << (size-1).bit_length())
+    
+    @staticmethod
     def place(obj, size, gap):
-        # Alignment is the next power of 2 greater than or
-        # equal to size.
-        alignment = 2**(size-1).bit_length()
+        alignment = BinaryPlacer._alignment(size)
         amask = alignment-1
         
         # Find the first alignment boundary using bit-twiddling tricks.
@@ -138,8 +156,16 @@ class BinaryPlacer:
         end = start + size
         if end <= gap.end:
             return PlacedObject(obj, start, size)
-        return None            
+        return None
+        
+    @staticmethod
+    def validate(po):
+        alignment = BinaryPlacer._alignment(po.size)
+        amask = alignment-1
+        return (po.start & amask == 0)
+    
     place.__doc__ = NoPlacer.place.__doc__
+    validate.__doc__ = NoPlacer.validate.__doc__
 
 class Space:
     """A Space that can be filled.
@@ -151,7 +177,14 @@ class Space:
     
     In boolean context, Space is True if there are any items stored in 
     it, or False if the space is completely empty.
+    
+    The data member enforce_rules_on_fixed determines whether when calling the
+    .add method with a fixed start position the placer rules are used to
+    determine whether that placement is legal.  The default value of
+    False allows explicit placement regardless of placer rules.
     """
+    
+    enforce_rules_on_fixed = False
     
     def __init__(self, size=None, resizer=NoResizer, placer=NoPlacer):
         self.size = 1 if size is None else size
@@ -194,70 +227,94 @@ class Space:
     def items(self):
         """Iterate over all the actual items in the space."""
         return (x for x in self if x)
+    
+    def addfloating(self, obj, size):
+        """Try to find a place for this object and place it there."""
         
-    def _add_intl(self, obj, size, start, gap):
-        """Try to add this object into this gap."""
-        
-        if (start is not None):                
-            # With a fixed start location, we're only even interested
-            # in a particular gap.
-            if not (gap.start <= start < gap.end):
-                return None
+        # First try all the existing gaps.  If we can't find one then
+        # resize the space and place it in the new gap at the end.
+        for idx, po in self._enumerated_iter():
+            # Only interested in gaps
+            if po:
+                continue
+            placement = self._placer.place(obj, size, po)
+            if placement is not None:
+                break
                 
-            # Now resize this gap to start at the correct place.
-            newgap = PlacedObject(None, start, gap.end-start)
-                
-            # Then see if we can place here.  We need a valid
-            # placement with the correct start.
-            return self._placer.place(obj, size, newgap)
-            
         else:
-            # With an unassigned start location, we try all the
-            # gaps until we get one we like.
-            return self._placer.place(obj, size, gap)
+            idx = len(self._items)
+            newgap = self._resizer.resize(self, need=size)
+            placement = self._placer.place(obj, size, newgap)
+        
+        # One or the other should have always suceeded.
+        assert(placement)
+        self._items.insert(idx, placement)
+        return placement
+            
+    def addfixed(self, obj, size, start):
+        """Add the object at a fixed location or raise a ValueError."""
+        
+        # Create a PlacedObject here and see if there's a gap for it.
+        newpo = PlacedObject(obj, start, size)
+        if self.enforce_rules_on_fixed and not self._placer.validate(newpo):
+            raise ValueError("Object of size {} at location {} violates placement rules.".format(size, start))
+        
+        if newpo.end > self.size:            
+            # We need to resize to fit this, in which case we know that the
+            # placement goes at the end.  Still, we need to check the last
+            # item to make sure we're good.
+            try:
+                last_item = self._items[-1]
+                if last_item.end > newpo.start:
+                    raise ValueError(
+                        "New object ({0.size}@{0.start}) blocked by exiting ({1.size}@{1.start})".format(
+                        newpo, last_item
+                    ))
+            except IndexError:
+                # No items in list yet; nothing to collide with
+                pass
+            
+            newgap = self._resizer.resize(self, need=size)
+            assert(newgap.end >= newpo.end)
+            assert(newgap.start <= newpo.start)
+            self._items.append(newpo)
+        
+        else:
+            # Check to find a place to put it.  The first area we find where the
+            # end is past our end is the only possible place to put it.
+            end = newpo.end
+            for idx, po in self._enumerated_iter():
+                if po.end >= end:
+                    if po:
+                        raise ValueError(
+                            "New object ({0.size}@{0.start}) blocked by existing ({1.size}@{1.start})".format(
+                            newpo, po
+                        ))
+                    if po.start > newpo.start:
+                        prev_item = self._items[idx-1]
+                        raise ValueError(
+                            "New object ({0.size}@{0.start}) blocked by existing ({1.size}@{1.start})".format(
+                            newpo, prev_item
+                        ))
+                    self._items.insert(idx, newpo)
+                    
+        return newpo
         
     def add(self, obj, size, start=None):
         """Add an object into the Space.
         
         Returns a PlacedObject, though this can usually be
-        ignored.  Raises IndexError if the object cannot be placed.
+        ignored.  Raises ValueError if the object cannot be placed.
         
         start, if given, provides a fixed start location.
         """
         
-        # We may need to resize the space to even have a chance.
-        if start is not None:
-            end = start + size
-            need = end - self.size
-            if need > 0:
-                self._resizer.resize(self, need)
-        
-        for n, po in self._enumerated_iter():
-            # Only interested in gaps
-            if po:
-                continue
-            placement = self._add_intl(obj, size, start, po)
-            if placement is not None:
-                break
-            
+        #import pdb
+        #pdb.set_trace()
+        if start is None:
+            return self.addfloating(obj, size)
         else:
-            # None of our gaps fit the criteria.  Try to resize for the
-            # new object and give it one more try.
-            try:
-                newgap = self._resizer.resize(self, size)
-                n = len(self._items)
-                placement = self._add_intl(obj, size, start, newgap)
-            except NotImplementedError:
-                raise IndexError('No room for object of size {}'.format(size))
-            
-        assert(placement is not None)
-        if (start is not None) and (placement.start != start):
-            raise IndexError("Could not place at fixed start {}".format(start))
-            
-        # Alright, the placement is valid.  Store the item and
-        # call it a day.
-        self._items.insert(n, placement)
-        return placement
+            return self.addfixed(obj, size, start)
         
     def __str__(self):
         """A string respresentation for debugging."""
