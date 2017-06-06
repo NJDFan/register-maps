@@ -10,7 +10,7 @@ class BaseSpaceTest(unittest.TestCase):
 	
 	initial_items = ()
 	gaps = (
-		(0, 1),
+		(0, 0),
 	)
 	
 	def setUp(self):

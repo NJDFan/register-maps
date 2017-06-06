@@ -204,9 +204,9 @@ class HtiElement():
         try:
             self._processattributes(xml_element)
             self._processchildren(xml_element)
-        except (KeyError, ValueError, AttributeError, XmlError) as e:
-            import traceback
-            traceback.print_exc()
+        except (KeyError, ValueError, AttributeError, IndexError) as e:
+            #import traceback
+            #traceback.print_exc()
             raise XmlError(str(e), xml_element, self.sourcefile) from e
     
     def _processattributes(self, xmlelement):
@@ -248,11 +248,17 @@ class HtiElement():
                 attrib[k] = d
         
         # Check for any invalid values on the common ones
-        if attrib['readOnly'] and attrib['writeOnly']:
-            raise ValueError('Cannot have both readOnly and writeOnly set true.')
+        try:
+            if attrib['readOnly'] and attrib['writeOnly']:
+                raise ValueError('Cannot have both readOnly and writeOnly set true.')
+        except KeyError:
+            pass
                 
-        # if attrib.get('format', 'bits') not in ('signed', 'unsigned', 'bits'):
-        #    raise ValueError('Illegal format, must be signed, unsigned, or bits.')
+        try:
+            if attrib.get('format', 'bits') not in ('signed', 'unsigned', 'bits'):
+                raise ValueError('Illegal format, must be signed, unsigned, or bits.')
+        except KeyError:
+            pass
         
     def _processchildren(self, xml_element):
         """Child element processing portion of initialization."""
@@ -273,10 +279,10 @@ class HtiElement():
             if htichild.ischild:
                 po = self.space.add(htichild, htichild.size, htichild.offset)
                 htichild.place(po)
-                
+        
         self.afterchildren()
         if self.size is None:
-            self.size = self.space.size
+            self._attrib['size'] = self.space.size
         
     def _adddesc(self, text):
         """Append a description element, cleaning whitespace."""
@@ -319,6 +325,11 @@ class HtiElement():
         except KeyError:
             raise AttributeError(attr)
             
+    def attributes(self):
+        """Return a dict of attributes."""
+        return self._attrib
+        
+            
 class Description:
     """Defines a Description element, which is a child of practically
     any HtiElement.
@@ -360,7 +371,7 @@ class MemoryMap(HtiElement):
     space_resizer = space.BinaryResizer
     
     def __init__(self, xml_element, components, sourcefile='unknown file'):
-        self.components = components
+        self._components = components
         super().__init__(xml_element, parent=None, sourcefile=sourcefile)
 
 class Instance(HtiElement):
@@ -383,15 +394,12 @@ class Instance(HtiElement):
     @property
     def binding(self):
         """Return the Component that this is an Instance of."""
-        try:
-            name = self.extern
-        except AttributeError:
-            name = self.name
-        return self.components[name]
+        name = self._attrib.get('extern', self.name)
+        return self._components[name]
         
     @property
-    def components(self):
-        return self.parent.components
+    def _components(self):
+        return self.parent._components
         
 class Component(HtiElement):
     """
@@ -474,63 +482,71 @@ class Enum(HtiElement):
     """Enums can be used to better define fields."""
     
     # Enums behave differently than anything else, so we have to 
-    # override the default _optional and _defaults
+    # override the default _optional.  We'll make value and offset
+    # into aliases for one another.
     
-    _optional = {
+    _optional = {}
+    optional = {
         'value' : toint,
+        'offset' : toint,
     }
-    _defaults = {}
+    defaults = {
+        'value' : lambda self: getattr(self, 'offset', None),
+        'offset' : lambda self: getattr(self, 'value', None)
+    }
     
     size = 1
     space_size = 0
     
     def place(self, po):
         if self.value is None:
-            self.value = po.start
+            self.offset = self.value = po.start
         assert(self.value == po.start)
         assert(self.size == po.size)
+        
     
-class Array(HtiElement):
+class _Array(HtiElement):
     """Arrays represent repeated entities.
     
     Any element can be repeated.  So, for instance, a MemoryMap
     may contain an InstanceArray, a Component a RegisterArray, or
     a Register a FieldArray.
     """
-    numeric_attributes = set(['offset', 'count', 'framesize'])
-    required_attributes = set(['count'])
     
-    def _post_finish(self):
-        """Form a space from the contained elements and get the
-        framesize and size attributes."""
-        
-        if ('framesize' not in self):
-            # Count up all the sizes of the children.
-            self['framesize'] = sum([c['size'] for c in self.children])
+    # There is actually NOT a required name.
+    _required = {}
+    required = {
+        'count' : toint
+    }
+    optional = {
+        'name' : str,
+        'framesize' : toint,
+    }
+    
+    def afterchildren(self):
+        if self.framesize is None:
+            self._attrib['framesize'] = self.space.size
             
-        self.space = space.FiniteSpace(self['framesize'])
-        self._add_to_space(self.children)
-        
-        self['size'] = self.space.size() * self['count']
-        
-        if ('name' not in self):
-            if len(self.children) == 1:
-                self['name'] = self.children[0]['name']
+        if self.name is None:
+            children = list(self.space.items())
+            if len(children) == 1:
+                self._attrib['name'] = self.children[0].name
             else:
-                raise MissingRequiredAttributeError('Array with more than one contained element needs a name.')
+                raise ValueError('Array with more than one contained element needs a name.')
                 
-class RegisterArray(Array):
-    def _pre_finish(self):
-        """Inherit necessary attributes."""
-        for attr in ['width', 'readOnly', 'writeOnly']:
-            if attr not in self:
-                self[attr] = self.parent()[attr]
-                
-class InstanceArray(Array):
-    pass
+        self._attrib['size'] = self.framesize * self.count
+        
+class RegisterArray(_Array):
+    space_placer = space.LinearPlacer
+    space_resizer = space.BinaryResizer
+    
+    @property
+    def width(self):
+        return self.parent.width
 
 # Build a dict crossreferencing XML tags to HtiElement subclasses.
 _classes_by_name = { c.__name__.lower() : c for c in HtiElement.__subclasses__() }
+_classes_by_name.update((c.__name__.lower(), c) for c in _Array.__subclasses__())
 _classes_by_name['desc'] = Description
 _classes_by_name['description'] = Description
 def _classlookup(name):

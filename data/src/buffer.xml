@@ -7,12 +7,11 @@
 	Control register for each of the 64 i/o channels
 	</desc>
 	
-	
-	<registerarray name="BUFFER" count ="128" framesize="0x1" offset="0">
-        <desc> bufffer registers </desc>
-            <register name="BUFFn"  width="16"></register>
+	<registerarray name="BUFFER" count="128">
+        <desc>Array of buffer registers.</desc>
+            <register name="BUFn">Modifiable buffer</register>
+            <register name="STATn" readOnly="true">Status register</register>
+            <register name="STAT2n" readOnly="true">Status register</register>
     </registerarray>
     
-
-
 </component>

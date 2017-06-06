@@ -36,7 +36,10 @@ class tree(Visitor):
         self.indent = oldindent
         
     def defaultvisit(self, node):
-        line = '{}? {}'.format(type(node).__name__, node.name)
+        line = '{} {} ({})'.format(
+            type(node).__name__, node.name,
+            ','.join('{}={}'.format(k, v) for k, v in node._attrib.items() if k != 'name')
+        )
         self.headline(line, node)
         
     def visit_Component(self, node):
@@ -49,5 +52,9 @@ class tree(Visitor):
         
     def visit_Instance(self, node):
         line = '({}) {} {}'.format(node.offset, node.extern, node.name)
+        self.headline(line, node)
+        
+    def visit_Enum(self, node):
+        line = '{} = {}'.format(node.name, node.value)
         self.headline(line, node)
         

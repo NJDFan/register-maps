@@ -69,104 +69,120 @@ class PlacedObject:
             type(self).__name__, self.obj, self.start, self.size
         )
 
-class NoResizer:
-    """A null resizer; prevents resizing a Space."""
+class Instantiator:
+    """Descriptor that returns a common instance when called on a class or
+    the current instance when called on an instance.
     
-    @staticmethod
-    def resize(spc, need):
-        """Resize a Space.  Returns a PlacedObject for the gap at the end.
+    This only works if the class requires no arguments to __init__.
+    
+    This is just to avoid creating a zillion instances of these little classes.
+    """
+    
+    def __init__(self):
+        self.instances = {}
+    
+    def __get__(self, obj, objtype=None):
+        if obj is not None:
+            return obj
+        try:
+            x = self.instances[objtype]
+            return x
+        except KeyError:
+            x = objtype()
+            self.instances[objtype] = x
+            return x
+
+class Resizer:
+    """Abstract base class for a Resizer."""
+    
+    def resize(self, spc, minsize):
+        """Resize a Space to at least minsize.
         
         spc - The space to be resized.
-        need - The amount of space needed in the resize.
+        minsize - The minimum new size of the space.
         """
+        # Make sure this is legal. IndexError means the array is empty.
+        try:
+            lastitem = spc._items[-1]
+            if lastitem.end > minsize:
+                minsize = lastitem
+        except IndexError:
+            pass
+        
+        return self.doresize(spc, minsize)
+        
+    def doresize(self, spc, minsize):
+        raise NotImplementedError('resize')
+        
+    instance = Instantiator()
+        
+class NoResizer(Resizer):
+    """A null resizer; prevents resizing a Space."""
+    
+    def doresize(self, spc, minsize):
         raise ValueError("Resizing this space not allowed.")
     
-class LinearResizer(NoResizer):
+class LinearResizer(Resizer):
     """Adds only as much space as needed."""
 
-    @staticmethod
-    def resize(spc, need):
-        last = spc.last()
-        if not last:
-            # The Space currently ends with a gap, we can use it.
-            spc.size += need - last.size
-            return PlacedObject(None, last.start, need)
-        else:
-            # The Space currently ends with an object
-            spc.size += need
-            return PlacedObject(None, last.end, need)
-    resize.__doc__ = NoResizer.resize.__doc__
+    def doresize(self, spc, minsize):
+        spc.size = minsize
     
-class BinaryResizer(NoResizer):
+class BinaryResizer(Resizer):
     """Adds enough space to keep a Space.size a power of 2."""
     
-    @staticmethod
-    def resize(spc, need):
-        newsize = spc.size + need
-        spc.size = 2**((newsize-1).bit_length())
-        return spc.last()
-    resize.__doc__ = NoResizer.resize.__doc__
-
-class NoPlacer:
-    """A null Placer, prevents adding objects to a Space."""
-    @staticmethod
-    def place(obj, size, gap):
+    def doresize(self, spc, minsize):
+        spc.size = (1 << (minsize-1).bit_length())
+        
+class Placer:
+    """Abstract base class for a Resizer."""
+    
+    def place(self, obj, size, gap):
         """Try to place an object into a given gap.
         
         Returns a new PlacedObject or None if it won't fit.
         """
-        raise ValueError("Not allowed to place in this Space.")
-       
-    @staticmethod
-    def validate(po):
-        """Is a PlacedObject legal by these placer rules?"""
+        
+        possible = self.placeInfinite(obj, size, gap.start)
+        if possible.end <= gap.end:
+            return possible
+        else:
+            return None
+        
+    def validate(self, po):
+        """Is this PlacedObject legal by these placer rules?"""
+        wouldplace = self.placeInfinite(po.obj, po.size, po.start)
+        return wouldplace.start == po.start
+        
+    def placeInfinite(self, obj, size, minstart):
+        """Make a PlacedObject in an infinite gap starting at minstart."""
+        raise NotImplementedError('placeInfinite')
+        
+    instance = Instantiator()
+        
+class NoPlacer(Placer):
+    """A null Placer, prevents adding objects to a Space."""
+    
+    def placeInfinite(self, obj, size, minstart):
         raise ValueError("Not allowed to place in this Space.")
         
-class LinearPlacer:
+class LinearPlacer(Placer):
     """Place an object in the first place it will fit."""
     
-    @staticmethod
-    def place(obj, size, gap):
-        if gap.size >= size:
-            return PlacedObject(obj, gap.start, size)
-        return None
+    def placeInfinite(self, obj, size, minstart):
+        return PlacedObject(obj, minstart, size)
         
-    @staticmethod
-    def validate(po):
-        return True
-        
-    place.__doc__ = NoPlacer.place.__doc__
-    validate.__doc__ = NoPlacer.validate.__doc__
-        
-class BinaryPlacer:
+class BinaryPlacer(Placer):
     """Place an object on a power-of-2 boundary based on size."""
     
-    @staticmethod
-    def _alignment(size):
-        """Return the next power of 2 greater than or equal to size."""
-        return (1 << (size-1).bit_length())
-    
-    @staticmethod
-    def place(obj, size, gap):
-        alignment = BinaryPlacer._alignment(size)
+    def placeInfinite(self, obj, size, minstart):
+        alignment = (1 << (size-1).bit_length())
         amask = alignment-1
         
         # Find the first alignment boundary using bit-twiddling tricks.
-        start = (gap.start + amask) & ~amask
-        end = start + size
-        if end <= gap.end:
-            return PlacedObject(obj, start, size)
-        return None
+        start = (minstart + amask) & ~amask
+        return PlacedObject(obj, start, size)
         
-    @staticmethod
-    def validate(po):
-        alignment = BinaryPlacer._alignment(po.size)
-        amask = alignment-1
-        return (po.start & amask == 0)
-    
-    place.__doc__ = NoPlacer.place.__doc__
-    validate.__doc__ = NoPlacer.validate.__doc__
-
 class Space:
     """A Space that can be filled.
     
@@ -187,9 +203,13 @@ class Space:
     enforce_rules_on_fixed = False
     
     def __init__(self, size=None, resizer=NoResizer, placer=NoPlacer):
-        self.size = 1 if size is None else size
-        self._resizer = resizer
-        self._placer = placer
+        self.size = 0 if size is None else size
+        
+        # Allow passing classes rather than an object for the placer and
+        # resizer.
+        
+        self._resizer = resizer.instance
+        self._placer = placer.instance
         self._items = []
     
     def __bool__(self):
@@ -242,9 +262,9 @@ class Space:
                 break
                 
         else:
+            placement = self._placer.placeInfinite(obj, size, self.lastgap().start)
             idx = len(self._items)
-            newgap = self._resizer.resize(self, need=size)
-            placement = self._placer.place(obj, size, newgap)
+            self._resizer.resize(self, placement.end)
         
         # One or the other should have always suceeded.
         assert(placement)
@@ -274,9 +294,9 @@ class Space:
                 # No items in list yet; nothing to collide with
                 pass
             
-            newgap = self._resizer.resize(self, need=size)
-            assert(newgap.end >= newpo.end)
-            assert(newgap.start <= newpo.start)
+            self._resizer.resize(self, newpo.end)
+            assert(self.size >= newpo.end)
+            assert(self.lastgap().start <= newpo.start)
             self._items.append(newpo)
         
         else:
@@ -333,6 +353,16 @@ class Space:
                 return PlacedObject(None, last_item.end, self.size-last_item.end)
         except IndexError:
             return PlacedObject(None, 0, self.size)
+            
+    def lastgap(self):
+        """Returns a PlacedObject (possibly of zero size) representing the
+        last gap"""
+        
+        gap = self.last()
+        if gap:
+            return PlacedObject(None, self.size, 0)
+        else:
+            return gap
             
     def at(self, index):
         """Returns the PlacedObject that encompasses index.
