@@ -16,6 +16,8 @@
     -->
 	<instance name="IDENT" extern="IDENT"	offset="0x000"/>
 	<instance name="DIO" extern="DIO"	offset="0x040"/>
+	<instance name="DIO2" extern="DIO"/>
+	<instance name="DIO3" extern="DIO"/>
 	<!-- 
 	<instance name="ANALOG" extern="ANALOG"	offset="0x060"/>
 	<instance name="CONTROL" extern="CONTROL"	offset="0x080"/>
