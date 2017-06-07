@@ -17,7 +17,7 @@ comment = textwrap.TextWrapper(
 CBAR = '-' * 78
 
 def register_format(element, index=True):
-    if element.size == 1:
+    if element.width == 1:
         return 'std_logic'
     
     fmt = {
@@ -27,118 +27,136 @@ def register_format(element, index=True):
     }[element.format]
     
     if index:
-        return '{0}({1} downto 0)'.format(basetype, element.size-1)
+        return '{0}({1} downto 0)'.format(fmt, element.width-1)
     else:
-        return basetype
+        return fmt
+        
+class Record:
+    """Represents a VHDL record type."""
+    
+    def __init__(self, name):
+        self.name = name
+        self.fields = []
+    
+    def add(self, field, typename):
+        self.fields.append((field, typename))
+        
+    def lines(self):
+        yield 'type {} is record'.format(self.name)
+        for field, typename in self.fields:
+            yield '    {}: {};'.format(field, typename)
+        yield 'end record {};'.format(self.name)
+        
+    def __str__(self):
+        return '\n'.join(self.lines())
+        
+class Subtype:
+    """Represents a VHDL subtype."""
+    
+    def __init__(self, subtypename, actual):
+        self.name = subtypename
+        self.actual = actual
+        
+    def __str__(self):
+        return 'subtype {} is {};'.format(self.name, self.actual)
+        
+class Array:
+    """Represents a VHDL array type."""
+    
+    def __init__(self, typename, basetype, left, right):
+        self.name = typename
+        self.base = basetype
+        self.left = left
+        self.right = right
 
-class RegisterAddresses(Visitor):
-    """Outputs register addresses for a PackageHeader."""
-    
-    addresstype = 't_addr'
-    
-    def constant(self, name, val):
-        self.printf('constant {}: {} := 16#{:03X}#;',
-            name, self.addresstype, val
+    def __str__(self):
+        return 'type {} is array({} {} {}) of {};'.format(
+            self.name,
+            self.left, 'downto' if self.left > self.right else 'to', self.right,
+            self.base
         )
+     
+class AddressConstant:
+    def __init__(self, name, value):
+        self.name = name
+        self.value = value
+        
+    def __str__(self):
+        return 'constant {}: t_addr := {};'.format(self.name, self.value)
+        
+class VhdlStructures(Visitor):
+    """Turn the register map document into a set of abstract VHDL structures."""
     
     def begin(self, startnode):
-        self.print('-' * 20, 'Register Addresses', '-' * 20)
-        self.printf('subtype {} is integer range 0 to {};',
-            self.addresstype, startnode.size-1
-        )
+        self.constants = []
+        self.types = []
+        
+        self.recordstack = []
+        
+    @property
+    def activerecord(self):
+        if self.recordstack:
+            return self.recordstack[-1]
+        return None
         
     def visit_Component(self, node):
-        for obj, start, size in node.space.items():
-            self.visit(obj)
-            
-    def visit_Register(self, node):
-        self.constant(node.name, node.offset)
+        self.visitchildren(node)
         
-    def visit_RegisterArray(self, node):
-        self.constant(node.name+'_BASEADDR', node.offset)
-        self.constant(node.name+'_LASTADDR', node.offset+node.size-1)
-        self.constant(node.name+'_FRAMESIZE', node.framesize)
-        for obj, start, size in node.space.items():
-            self.visit(obj)
-            
-class RegisterTypeComments(Visitor):
-    """Output register type comments for a RegisterTypes"""
-    
     def visit_Register(self, node):
-        # Start by commenting on the register.
-        self.print(comment.fill(node.name))
-        for d in node.description:
-            self.print(comment.fill(d))
-            
+        self.constants.append(AddressConstant(node.name, node.offset))
+        
+        # TODO: Handle registers of size > 1
+        if node.size > 1:
+            raise ValueError("unable to handle registers greater than 1 word")
+        
+        typename = 't_' + node.name
+        
+        # Handle possible record types for this register.
         if node.space:
-            self.print(comment.fill('Defined fields:'))
-            self.print(comment.fill('---------------'))
-            items = reversed(list(node.space.items()))
-            for obj, start, size in items:
-                self.visit(obj)
-                
-    def visit_Field(self, node):
-        if len(node.description) == 0:
-            self.print(comment.fill(node.name))
-            return
-
-        graf = copy(comment)
-        graf.subsequent_indent = '--   ' + ' ' * len(node.name)
-        it = iter(node.description)
-        first = '{} = {}'.format(node.name, next(it))
-        self.print(graf.fill(first))
-        
-        graf.first_indent = graf.subsequent_indent
-        for d in it:
-            self.print(graf.fill(d))
-            
-class RegisterTypeTypes(Visitor):
-    """Output register types for a RegisterTypes"""
-    
-    def visit_Register(self, node):
-        self.typename = 't_' + node.name
-        
-        if node.space:
-            # This register has fields.  Implement it as a record.
-            self.printf('type {} is record', self.typename)
+            self.recordstack.append(Record(typename))
             self.visitchildren(node)
-            self.printf('end record {};', self.typename)
-    
-    def visit_Field(self, node):
-        regtype = register_format(node)
-        self.printf('    {}: {};'.format(node.name, regtype))
+            self.types.append(self.recordstack.pop())
             
-class RegisterTypes(Visitor):
-    """Output register type section for a PackageHeader"""
-    
-    def begin(self, startnode):
-        self.regtypes = {}
-        self.print('-' * 20, 'Register Types', '-' * 20)
-        
-    def visit_Component(self, node):
-        for obj, start, size in node.space.items():
-            self.visit(obj)
-            
-    def visit_Register(self, node):
-        RegisterTypeComments(self.output, node)
-        RegisterTypeTypes(self.output, node)
-        
-    def visit_RegisterArray(self, node):
-        
-        # If there's only type of register in the array we can cheat on all
-        # the type making.
-        if len(register_types) == 1:
-            basetype = register_types[0]
         else:
-            basetype = 'tb_' + node.name
-            self.printf('type {} is record', basetype)
-            self.visitchildren(node)
-            self.printf('end record {};', typename)
+            fmt = register_format(node)
+            self.types.append(Subtype(typename, fmt))
+            
+        # Handle the record this might be in
+        if self.activerecord:
+            self.activerecord.add(node.name, typename)
+            
+    def visit_RegisterArray(self, node):
+        consts = (
+            ('_BASEADDR', node.offset),
+            ('_LASTADDR', node.offset+node.size-1),
+            ('_FRAMESIZE', node.framesize)
+        )
+        for suffix, val in consts:
+            self.constants.append(AddressConstant(node.name+suffix, val))
         
-class PackageHeader(Visitor):
-
+        items = list(node.space.items())
+        if len(items) == 1:
+            # Shortcut the types
+            obj = items[0].obj
+            basetype = 't_' + items[0].obj.name
+            self.visit(obj)
+        else:
+            # Have to build a record for the array type
+            basetype = 'tb_' + node.name
+            self.recordstack.append(Record(basetype))
+            self.visitchildren(node)
+            self.types.append(self.recordstack.pop())
+            
+        typename = 'ta_' + node.name
+        self.types.append(Array(typename, basetype, node.count-1, 0))
+        
+    def visit_Field(self, node):
+        pass
+        
+class old(Visitor):
+    
     def visit_Component(self, node):
-        self.pkgname = 'pkg_' + node.name.lower()
+        structures = VhdlStructures(self.output, node)
         
         header = dedent("""
         {bar}
@@ -161,22 +179,27 @@ class PackageHeader(Visitor):
         package {pkg} is
         """)
         
-        self.print(header.format(
+        pkgname = 'pkg_' + node.name
+        self.printf(header,
             name = node.name,
             desc = '\n\n'.join(wrapper.fill(d) for d in node.description),
             source = node.sourcefile,
             time = datetime.datetime.now(),
-            pkg = self.pkgname,
+            pkg = pkgname,
             bar = CBAR
-        ))
+        )
         
-        RegisterAddresses(self.output, node)
-        RegisterTypes(self.output, node)
+        self.print('-' * 20, 'Register Addresses', '-' * 20)
+        for c in structures.constants:
+            print(c)
         
-class old(Visitor):
-    
-    def visit_Component(self, node):
-        PackageHeader(self.output, node)
+        self.print()
+        self.print('-' * 20, 'Register Types', '-' * 20)
+        for c in structures.types:
+            print(c)
+        
+        self.print()
+        self.printf('end package {}', pkgname)
         
     def visit_MemoryMap(self, node):
         pass
