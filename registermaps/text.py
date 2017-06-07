@@ -18,7 +18,7 @@ class tree(Visitor):
         """
         
         oldindent = self.indent
-        print(oldindent + line, file=self.output)
+        self.print(oldindent + line)
         self.indent = newindent = oldindent + self.indentper
         
         wrapper = textwrap.TextWrapper(
@@ -28,11 +28,9 @@ class tree(Visitor):
         )
         for d in node.description:
             for line in wrapper.wrap(d):
-                print(line, file=self.output)
-        
-        for po in node.space.items():
-            self.visit(po.obj)
-        
+                self.print(line)        
+        self.visitchildren(node)
+
         self.indent = oldindent
         
     def defaultvisit(self, node):

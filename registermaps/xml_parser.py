@@ -474,9 +474,14 @@ class Field(HtiElement):
         """Take size from the children if necessary."""
         if self.size is None:
             if self.space.size <= 1:
-                self.size = 1
+                self._attrib['size'] = 1
             else:
-                self.size = (self.space.size - 1).bit_length()
+                self._attrib['size'] = (self.space.size - 1).bit_length()
+            
+    @property
+    def width(self):
+        """Alias for size."""
+        return self.size
             
 class Enum(HtiElement):
     """Enums can be used to better define fields."""

@@ -6,7 +6,12 @@
     <desc>
 	The VMESPACE peripheral holds registers to the VMEbus.  
 	An array of 256 16bit VME registers will be implemented per described in the V280 manual.
-	</desc>          
+	</desc>
+	
+	<desc>
+	This is visible only to the internal bus.
+	</desc>
+	
     <register name="MFR" width="16">
         <desc> Highland ID </desc>  
     </register>
@@ -45,12 +50,10 @@
         <desc> Calibration date: year </desc>  
     </register>
 	<register name="DCAL" width="16" >
-		<desc> Calibration date: month/day </desc>  
+		<desc> Calibration date: month/day </desc>
+		<field name="DAY" offset="0" size="8">Day (1-31)</field>
+		<field name="MONTH" offset="8" size="8">Month (1-12)</field>
     </register>
-		
-	<register name="RESERVED" width="16" offset="11">
-		<desc>Unused registers</desc>
-	</register>
 	
 	<register name="ULED" width="16" offset="12" >
         <desc> User LED control </desc>  

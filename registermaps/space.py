@@ -213,8 +213,18 @@ class Space:
         self._items = []
     
     def __bool__(self):
-        """"""
+        """True if there are any true items in the space."""
         return bool(self._items)
+    
+    @property
+    def itemcount(self):
+        """Number of true items in the space."""
+        return len(self._items)
+    
+    @property
+    def gapcount(self):
+        """Number of gaps in the space."""
+        return sum(1 for _ in self.gaps())
     
     def _enumerated_iter(self):
         """Generate (idx, po) pairs of index and PlacedObject. 
