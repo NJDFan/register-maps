@@ -52,6 +52,7 @@ class Visitor:
             self.output = output
         else:
             makedirs(output, exist_ok=True)
+            self.outputdir = output
             name = self.makefilename(output, startnode)
             self.output = open(name, mode, encoding=self.encoding)
         self.begin(startnode)

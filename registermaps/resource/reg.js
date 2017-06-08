@@ -15,33 +15,33 @@ function getQueryVariable(variable)
 
 window.onload = function()
 {
-	base = getQueryVariable("base");
-	parent = getQueryVariable("parent");
+	var base = getQueryVariable("base");
+	var parent = getQueryVariable("parent");
 	
 	if (base) {
 		// Offset any nodes in an offset span.
-		nodes = document.getElementsByClassName('offset');
-		baseint = parseInt(base)
+		var nodes = document.getElementsByClassName('offset');
+		var baseint = parseInt(base)
+		var dooffset;
 		if (isNaN(baseint)) {
 			dooffset = function(offset) {
 				return base + '+' + offset;
 			}
 		} else {
 			dooffset = function(offset) {
-				return baseint + parseInt(offset);
+				return (baseint + parseInt(offset, 16)).toString(16)
 			}
 		}
 		for (var i=0, node; node=nodes[i]; i++) {
-			offset = node.currentText;
-			node.currentText = dooffset(offset);
+			node.textContent = dooffset(node.textContent);
 		}
 	}
 		
 	if (parent) {
-		bc = document.getElementById('breadcrumbs');
-		a = document.createElement('A');
+		var bc = document.getElementById('breadcrumbs');
+		var a = document.createElement('A');
 		a.href = parent + '.html';
-		a.appendChild(document.createTextNode(parent));
+		a.textContent = parent;
 		bc.appendChild(a);
 	}
 }
