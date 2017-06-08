@@ -101,8 +101,11 @@ class basic(Visitor):
         
         self.printf(self.package_header, pkg=self.pkgname)
         
-        addr = GenerateAddresses(self.output, node)
-        types = GenerateTypes(self.output, node)
+        addr = GenerateAddresses(self.output)
+        types = GenerateTypes(self.output)
+        
+        addr.execute(node)
+        types.execute(node)
         
         self.printf(self.package_split, pkg=self.pkgname)
         

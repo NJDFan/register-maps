@@ -2,6 +2,7 @@
 
 import argparse
 import sys
+from itertools import chain
 
 from . import xml_parser, import_object
 
@@ -29,10 +30,9 @@ def main(argv = None):
     parser.processDirectory(args.srcdir)
     
     # And do the outputs.
-    for v in parser.components.values():
-        f = formatkls(args.output, v)
-    for v in parser.memorymaps.values():
-        f = formatkls(args.output, v)
+    for v in chain(parser.components.values(), parser.memorymaps.values()):
+        f = formatkls(output=args.output)
+        f.execute(v)
         
 if __name__ == '__main__':
     main()

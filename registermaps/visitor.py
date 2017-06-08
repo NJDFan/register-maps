@@ -24,44 +24,53 @@ class Visitor:
     Subclasses can also overload begin and finish, which are called before
     tree parsing starts and after it is completed respectively.  These are
     generally places to put initialization and cleanup code.
+    
+    Create an instance of the Visitor, then call .execute on the start node.
+    Return value is the return value of Visitor.finish, which will usually
+    be None.
     """
     
     binary = False
     encoding = None
     extension = ''
     
-    def __init__(self, output, startnode):
-        """Create and execute this visitor on an output and startnode.
+    def __init__(self, output=None):
+        """Create this visitor bound to an output.
         
         Output can be:
+            None
+                Allow no output
             '-'
                 Output to standard output
             an open File object
                 Output to that file
-            None
-                Allow no output
             a directory name
                 Output to files in that directory
         """
         self.printoptions = {}
+        self._output = output
         
-        mode = 'wb' if self.binary else 'w'
-        if output == '-':
-            self.output = sys.stdout
-        elif isinstance(output, IOBase) or output is None:
-            self.output = output
-        else:
-            makedirs(output, exist_ok=True)
-            self.outputdir = output
-            name = self.makefilename(output, startnode)
-            self.output = open(name, mode, encoding=self.encoding)
+    def execute(self, startnode):
+        # Figure out what our actual output is going to be
+        if not hasattr(self, 'output'):
+            if self._output == '-':
+                self.output = sys.stdout
+            elif isinstance(self._output, IOBase) or self._output is None:
+                self.output = self._output
+            else:
+                mode = 'wb' if self.binary else 'w'
+                self.outputdir = self._output
+                makedirs(self.outputdir, exist_ok=True)
+                self.filename = startnode.name + self.extension
+                name = os.path.join(self.outputdir, self.filename)
+                self.output = open(name, mode, encoding=self.encoding)
+            
         self.begin(startnode)
-        self.visit(startnode)
-        self.finish()
-                
+        return self.finish(self.visit(startnode))
+        
     def makefilename(self, outputdir, node):
         """Make a filename for this node."""
-        return os.path.join(outputdir, node.name + self.extension)
+        return 
     
     def visit(self, node):
         """Base visit operation.  This shouldn't need overloading."""
@@ -93,11 +102,17 @@ class Visitor:
         ))
 
     def begin(self, startnode):
-        """Things to do before we begin visiting the first node."""
+        """Things to do before we begin visiting the first node.
+        
+        startnode is the top-level node of the tree.
+        """
         pass
 
-    def finish(self):
-        """Things to do after we have visited the entire tree."""
+    def finish(self, lastvalue):
+        """Things to do after we have visited the entire tree.
+        
+        lastvalue is the return of the top-level visit call.
+        """
         pass
 
     # Convenience output methods.
@@ -152,3 +167,23 @@ class Visitor:
             setattr(self, k, v)
         for k in deleteattrs:
             delattr(self, k)
+            
+    def clone(self, newtype=None, *args, **kwargs):
+        """Return an instance of a new Visitor object with a copy of all
+        instance variables from this one.
+        
+        newtype is a subclass of Visitor, which defaults to the class of self.
+        args and kwargs are passed to the constructor.
+        """
+        
+        if newtype is None:
+            newtype = type(self)
+        kwargs.setdefault('output', self.output)
+        obj = newtype(*args, **kwargs)
+        
+        for k, v in self.__dict__.items():
+            if k not in ('_output', 'output'):
+                setattr(obj, k, v)
+        return obj
+        
+        

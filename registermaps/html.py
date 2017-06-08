@@ -1,16 +1,32 @@
 """Translate XML register definitions into HTML documentation."""
 
+# We use JavaScript in the HTML documentation to allow HTML files to be
+# generated directly from Components, and then to have MemoryMap HTML files
+# pass GET query style arguments to them to be parsed dynamically.  These
+# arguments are:
+#
+# base
+#   The base address.  If this is numeric all addresses will be offset by
+#   this amount.  If text, it will appear with a plus sign, making the
+#   addresses into offsets.
+#
+# parent
+#   The name of the parent MemoryMap that we reached this file from.  This
+#   allows for a backwards link on the page.
+#
+# inst
+#   The name of the instance if different from the name of the component.
+
 from os import makedirs
 import os.path
+import datetime
 from lxml.html import builder as E
-from lxml.html import tostring
+from lxml.html import tostring, Element
 
 from .visitor import Visitor
 from . import resource_bytes
 
-def CLASS(v):
-    # helper function, 'class' is a reserved word
-    return {'class': v}
+CLASS = E.CLASS
     
 def register_format(node):
     """Returns the format (signed, unsigned, or nothing) and access
@@ -36,7 +52,34 @@ def register_format(node):
         return ''
 
 class basic(Visitor):
-    """Translate into HTML documentation."""
+    """Translate into HTML documentation.
+    
+    Data members
+    ------------
+        hlev   
+            Current HTML heading level
+        
+        breadcrumbs
+            If present, an A element pointing back to a source document.
+            
+        inst
+            If present, an instance name for a Component
+            
+        wordwidth
+            The width (in bits) of a word in a given Component
+            
+        offset
+            int - addresses are addresses on top of a base value
+            str - addresses are really offsets and should be printed with
+                the offset string as a prefix.
+            
+        address_nibbles
+            Number of hex digits to print for addresses
+            
+        title
+            Name of the document
+    
+    """
     
     # Because we're building up a hierarchical document we'll take advantage of
     # the ability of visit_ methods to return values to pass HTML Elements back
@@ -44,6 +87,28 @@ class basic(Visitor):
     
     binary = True
     extension = '.html'
+    
+    def __init__(self, output):
+        super().__init__(output)
+        self.hlev = 1
+        self.breadcrumbs = None
+        self.offset = 0
+    
+    _headings = [None, E.H1, E.H2, E.H3, E.H4, E.H5, E.H6]
+    def heading(self, *args, **kwargs):
+        """Create an H1-H6 for level = 1-6 respectively."""
+        return self._headings[self.hlev](*args, **kwargs)
+        
+    def footer(self, node):
+        """Create a standard footer block for HTML files."""
+        return E.DIV(
+            E.HR(),
+            E.P(
+                "Generated automatically from {source} at {time:%d %b %Y %H:%M}.".format(
+                    source = node.sourcefile,
+                    time = datetime.datetime.now()
+            ), CLASS='footer')
+        )
     
     def copyfile(self, name):
         """Copy a file from our internal resource folder to any outputdir."""
@@ -65,42 +130,56 @@ class basic(Visitor):
         return val
     
     def visit_Component(self, node):
+        # Ensure a local copy of the stylesheet.
         self.copyfile('reg.css')
-        self.copyfile('reg.js')
         
-        title = node.name + ' Register Map'
+        inst = getattr(self, 'inst', None)
+        if inst:
+            title = 'Instance {} of {} Register Map'.format(inst, node.name)
+        else:
+            title = '{} Register Map'.format(node.name)
+        self.title = title
         
-        self.wordwidth = node.width // 8
-        self.offset_modifier = ''
-        self.offset_class = 'offset'
-        self.offset_name = 'Address'
+        bc = E.DIV(id='breadcrumbs')
+        try:
+            if self.breadcrumbs is not None:
+                bc.append(self.breadcrumbs)
+        except AttributeError:
+            pass
+            
+        ww = node.width // 8
+        an = ((node.size-1).bit_length() + 3) // 4
         
-        html = E.HTML(
-            E.HEAD(
-                E.LINK(rel="stylesheet", href="reg.css", type="text/css"),
-                E.SCRIPT(src="reg.js", type='text/javascript'),
-                E.TITLE(title)
-            ),
-            E.BODY(
-                E.H1(title),
-                E.DIV(id='breadcrumbs'),
-                *[E.P(d) for d in node.description],
-                *self.visitchildren(node)
-            ),
-        )
+        with self.tempvars(wordwidth=ww, address_nibbles=an, hlev=2):
+            html = E.HTML(
+                E.HEAD(
+                    E.LINK(rel="stylesheet", href="reg.css", type="text/css"),
+                    E.TITLE(title)
+                ),
+                E.BODY(
+                    E.H1(title),
+                    bc,
+                    *[E.P(d) for d in node.description],
+                    *self.visitchildren(node)
+                ),
+            )
         return html
             
     def addressparagraph(self, node):
         """Return a P element for the byte address."""
         
-        return E.P(
-            '{} {}0x'.format(self.offset_name, self.offset_modifier),
-            E.SPAN(
-                '{:X}'.format(node.offset * self.wordwidth),
-                CLASS(self.offset_class)
-            )
-        )
+        offset = node.offset * self.wordwidth
+        if isinstance(self.offset, str):
+            text = 'Offset {prefix}0x{offset:0{nibbles}X}'
+        else:
+            offset += self.offset
+            text = 'Address 0x{offset:0{nibbles}X}'
         
+        return E.P(text.format(
+            prefix = self.offset,
+            offset = offset,
+            nibbles = self.address_nibbles
+        ))
             
     def visit_RegisterArray(self, node):
         """Generate a RegisterArray DIV."""
@@ -108,7 +187,7 @@ class basic(Visitor):
         framebytes = node.framesize * self.wordwidth
         
         root = E.DIV(CLASS('regarray'), id="ARRAY_" + node.name)
-        root.append(E.H2(node.name))
+        root.append(self.heading(node.name))
         root.append(self.addressparagraph(node))
         root.append(E.P(
             "Array of {} copies, repeats every {} bytes.".format(node.count, framebytes)
@@ -116,10 +195,7 @@ class basic(Visitor):
         for d in node.description:
             root.append(E.P(d, CLASS('description')))
             
-        with self.tempvars(
-            offset_modifier='N*{}+'.format(framebytes),
-            offset_class='', offset_name='Offset'
-            ):
+        with self.tempvars(offset='N*{}+'.format(framebytes), hlev=self.hlev+1):
             root.extend(self.visitchildren(node))
         return root
         
@@ -128,11 +204,10 @@ class basic(Visitor):
         etc."""
         
         ap = self.addressparagraph(node)
-        ap.attrib['class'] = 'registerinfo'
-        ap[0].tail = ' ' + register_format(node)
+        ap.text += ' ' + register_format(node)
         
         root = E.DIV(
-            E.H3(node.name),
+            self.heading(node.name),
             ap,
             *[E.P(d, CLASS('description')) for d in node.description],
             CLASS('register'), id="REG_" + node.name
@@ -205,22 +280,78 @@ class basic(Visitor):
         )
          
     def visit_MemoryMap(self, node):
+        """Create an HTML file for a MemoryMap."""
         self.copyfile('map.css')
         
-        title = node.name + ' Peripheral Map'
+        self.title = title = node.name + ' Peripheral Map'
         body = E.BODY(
             E.H1(title),
             *[E.P(d) for d in node.description]
         )
         
-        html = E.HTML(
-            E.HEAD(
-                E.LINK(rel="stylesheet", href="map.css", type="text/css"),
-                E.TITLE(title)
-            ),
-            body
-        )
+        an = ((node.size-1).bit_length() + 3) // 4
+        with self.tempvars(
+            wordwidth=1, address_nibbles=an, 
+            subdir=node.name+'_instances', hlev=2):
+                
+            html = E.HTML(
+                E.HEAD(
+                    E.LINK(rel="stylesheet", href="map.css", type="text/css"),
+                    E.TITLE(title)
+                ),
+                E.BODY(
+                    E.H1(title),
+                    *[E.P(d) for d in node.description],
+                    E.HR(),
+                    E.TABLE(
+                        E.TR(
+                            E.TH('Peripheral'), E.TH('Base Address'), E.TH('Description'),
+                            *self.visitchildren(node),
+                        ),
+                        CLASS('component_list')
+                    ),
+                    self.footer(node)
+                )
+            )
         return html
+        
+    def visit_Instance(self, node):
+        """
+        Create a table row for this Instance and a new file giving it a
+        memory map of its own.
+        """
+        
+        # If we're writing files, write one for the instance.
+        
+        desc = node.description or node.binding.description
+        
+        try:
+            newdir = os.path.join(self.outputdir, self.subdir)
+            makedirs(newdir, exist_ok=True)
+            
+            newfn = node.name + self.extension
+            with open(os.path.join(newdir, newfn), 'wb') as f:
+                obj = self.clone(output=f)
+                obj.offset = node.offset
+                obj.outputdir = newdir
+                obj.inst = node.name
+                obj.breadcrumbs = E.A(
+                    self.title,
+                    href=os.path.join('..', self.filename)
+                )
+                obj.execute(node.binding)
+                
+            linkelement = E.A(node.name, href=os.path.join(self.subdir, newfn))
+        except AttributeError:
+            linkelement = node.name
+        
+        # And provide a table row for the MemoryMap
+        return E.TR(
+            E.TD(linkelement), E.TD(self.addressparagraph(node)),
+            E.TD(
+                *[E.P(d) for d in desc]
+            )
+        )
         
     def finish(self, tree):
         self.write(tostring(tree, pretty_print=True))
