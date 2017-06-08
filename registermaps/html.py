@@ -38,6 +38,10 @@ def register_format(node):
 class basic(Visitor):
     """Translate into HTML documentation."""
     
+    # Because we're building up a hierarchical document we'll take advantage of
+    # the ability of visit_ methods to return values to pass HTML Elements back
+    # up the tree.
+    
     binary = True
     extension = '.html'
     
@@ -54,14 +58,24 @@ class basic(Visitor):
         except AttributeError:
             pass
     
+    def visit(self, node):
+        """This hook is in to help debugging, it should be null in effect."""
+        val = super().visit(node)
+        assert val is not None, str(node)
+        return val
+    
     def visit_Component(self, node):
         self.copyfile('reg.css')
         self.copyfile('reg.js')
         
         title = node.name + ' Register Map'
         
-        data = E.DIV()
-        self.html = E.HTML(
+        self.wordwidth = node.width // 8
+        self.offset_modifier = ''
+        self.offset_class = 'offset'
+        self.offset_name = 'Address'
+        
+        html = E.HTML(
             E.HEAD(
                 E.LINK(rel="stylesheet", href="reg.css", type="text/css"),
                 E.SCRIPT(src="reg.js", type='text/javascript'),
@@ -71,16 +85,10 @@ class basic(Visitor):
                 E.H1(title),
                 E.DIV(id='breadcrumbs'),
                 *[E.P(d) for d in node.description],
-                data
+                *self.visitchildren(node)
             ),
         )
-        
-        self.active = data
-        self.wordwidth = node.width // 8
-        self.offset_modifier = ''
-        self.offset_class = 'offset'
-        self.offset_name = 'Address'
-        self.visitchildren(node)
+        return html
             
     def addressparagraph(self, node):
         """Return a P element for the byte address."""
@@ -95,7 +103,7 @@ class basic(Visitor):
         
             
     def visit_RegisterArray(self, node):
-        """Generate prototypical registers."""
+        """Generate a RegisterArray DIV."""
         
         framebytes = node.framesize * self.wordwidth
         
@@ -109,26 +117,27 @@ class basic(Visitor):
             root.append(E.P(d, CLASS('description')))
             
         with self.tempvars(
-            active=root,
             offset_modifier='N*{}+'.format(framebytes),
             offset_class='', offset_name='Offset'
             ):
-            self.visitchildren(node)
-        self.active.append(root)
+            root.extend(self.visitchildren(node))
+        return root
         
     def visit_Register(self, node):
-        """Generate a Register with heading, bitfield table, field listing,
+        """Generate a Register DIV with heading, bitfield table, field listing,
         etc."""
         
-        self.active.append(E.H3(node.name))
         ap = self.addressparagraph(node)
         ap.attrib['class'] = 'registerinfo'
         ap[0].tail = ' ' + register_format(node)
-        self.active.append(ap)
         
-        for d in node.description:
-            self.active.append(E.P(d, CLASS('description')))
-            
+        root = E.DIV(
+            E.H3(node.name),
+            ap,
+            *[E.P(d, CLASS('description')) for d in node.description],
+            CLASS('register'), id="REG_" + node.name
+        )
+        
         if node.space:
             # We need bitfield tables.
             table = E.TABLE(CLASS('bitfield'))
@@ -152,15 +161,17 @@ class basic(Visitor):
                     CLASS('bit_numbers')
                 ))
             table.extend(reversed(rows))
-            self.active.append(table)
+            root.append(table)
             
-            fieldlist = E.UL(CLASS('fieldlist'))
-            with self.tempvars(active = fieldlist):
-                self.visitchildren(node, reverse=True)
-            self.active.append(fieldlist)
+            fieldlist = E.UL(
+                *self.visitchildren(node, reverse=True),
+                CLASS('fieldlist')
+            )
+            root.append(fieldlist)
+        return root
                 
     def visit_Field(self, node):
-        """Add these fields to the field list UL in self.active."""
+        """Create a LI for this field."""
         
         if node.size == 1:
             bitrange = '[{}]'.format(node.offset)
@@ -181,18 +192,17 @@ class basic(Visitor):
         if node.space:
             # We need a definitionlist for the enums
             dl = E.DL(CLASS('enumlist'))
-            with self.tempvars(active = dl):
-                self.visitchildren(node)
+            dl.extend(x for itemset in self.visitchildren(node) for x in itemset)
             item.append(dl)
-            
-        self.active.append(item)
+        return item
         
     def visit_Enum(self, node):
-        """Add these fields to the enum list DL in self.active."""
+        """Return a list of DT/DD elements for the enum DL."""
         
-        self.active.append(E.DT('{} - {}'.format(node.name, node.value)))
-        for d in node.description:
-            self.active.append(E.DD(d))
+        return (
+            [E.DT('{} - {}'.format(node.name, node.value))] + 
+            [E.DD(d) for d in node.description]
+        )
          
     def visit_MemoryMap(self, node):
         self.copyfile('map.css')
@@ -203,14 +213,15 @@ class basic(Visitor):
             *[E.P(d) for d in node.description]
         )
         
-        self.html = E.HTML(
+        html = E.HTML(
             E.HEAD(
                 E.LINK(rel="stylesheet", href="map.css", type="text/css"),
                 E.TITLE(title)
             ),
             body
         )
+        return html
         
-    def finish(self):
-        self.write(tostring(self.html, pretty_print=True))
+    def finish(self, tree):
+        self.write(tostring(tree, pretty_print=True))
         
