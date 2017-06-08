@@ -1,27 +1,10 @@
 """Translate XML register definitions into HTML documentation."""
 
-# We use JavaScript in the HTML documentation to allow HTML files to be
-# generated directly from Components, and then to have MemoryMap HTML files
-# pass GET query style arguments to them to be parsed dynamically.  These
-# arguments are:
-#
-# base
-#   The base address.  If this is numeric all addresses will be offset by
-#   this amount.  If text, it will appear with a plus sign, making the
-#   addresses into offsets.
-#
-# parent
-#   The name of the parent MemoryMap that we reached this file from.  This
-#   allows for a backwards link on the page.
-#
-# inst
-#   The name of the instance if different from the name of the component.
-
 from os import makedirs
 import os.path
 import datetime
 from lxml.html import builder as E
-from lxml.html import tostring, Element
+from lxml.html import tostring
 
 from .visitor import Visitor
 from . import resource_bytes
@@ -94,7 +77,7 @@ class basic(Visitor):
     
     _headings = [None, E.H1, E.H2, E.H3, E.H4, E.H5, E.H6]
     def heading(self, *args, **kwargs):
-        """Create an H1-H6 for level = 1-6 respectively."""
+        """Create an H1-H6 for self.hlev=1-6 respectively."""
         return self._headings[self.hlev](*args, **kwargs)
         
     def footer(self, node):
@@ -109,15 +92,18 @@ class basic(Visitor):
         )
     
     def copyfile(self, name):
-        """Copy a file from our internal resource folder to any outputdir."""
+        """Copy a file from our internal resource folder to the output
+        directory.
+        
+        """
         
         try:
-            if self.outputdir:
-                filename = os.path.join(self.outputdir, name)
+            if self.path is not None:
+                filename = os.path.join(self.path, name)
                 dirname = os.path.dirname(filename)
                 os.makedirs(dirname, exist_ok=True)
                 with open(filename, 'wb') as f:
-                    f.write(resource_bytes(name))
+                    f.write(resource_bytes('resource/' + name))
         except AttributeError:
             pass
     
@@ -158,7 +144,8 @@ class basic(Visitor):
                     E.H1(title),
                     bc,
                     *[E.P(d) for d in node.description],
-                    *self.visitchildren(node)
+                    *self.visitchildren(node),
+                    self.footer(node)
                 ),
             )
         return html
@@ -319,16 +306,17 @@ class basic(Visitor):
         memory map of its own.
         """
         
-        # If we're writing files, write one for the instance.
-        
-        desc = node.description or node.binding.description
-        
+        # If we're writing files, write another one for the instance and
+        # create an HTML link.  Otherwise just give it a name.
         try:
             relativefile = os.path.join(self.subdir, node.name + self.extension)
-            obj = type(self)(
-                output=os.path.join(self.path, relativefile),
-                verbose = self.verbose
-            )
+            filename = os.path.join(self.path, relativefile)
+        
+        except TypeError:
+            linkelement = node.name
+            
+        else:
+            obj = type(self)(output=filename, verbose=self.verbose)
             obj.offset = node.offset
             obj.inst = node.name
             obj.breadcrumbs = E.A(
@@ -336,12 +324,10 @@ class basic(Visitor):
                 href=os.path.join('..', self.filename)
             )
             obj.execute(node.binding)
-                
             linkelement = E.A(node.name, href=relativefile)
-        except AttributeError:
-            linkelement = node.name
         
         # And provide a table row for the MemoryMap
+        desc = node.description or node.binding.description
         return E.TR(
             E.TD(linkelement), E.TD(hex(node.offset)),
             E.TD(
@@ -350,5 +336,8 @@ class basic(Visitor):
         )
         
     def finish(self, tree):
-        self.write(tostring(tree, pretty_print=True))
+        try:
+            self.write(tostring(tree, pretty_print=True))
+        except TypeError:
+            self.write(tostring(tree, pretty_print=True, encoding='unicode'))
         

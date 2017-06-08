@@ -4,6 +4,7 @@ import argparse
 import sys
 import os.path
 from itertools import chain
+from . import __version__
 
 from . import xml_parser, import_object
 
@@ -16,6 +17,7 @@ def main(argv = None):
     parser.add_argument('srcdir')
     parser.add_argument('--output', help='Output directory for files.', default=None)
     parser.add_argument('--verbose', help='Name files as they are created.', action="store_true")
+    parser.add_argument('--version', action='version', version='%(prog)s ' + __version__)
     
     args = parser.parse_args(argv)
     
