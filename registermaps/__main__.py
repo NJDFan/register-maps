@@ -2,6 +2,7 @@
 
 import argparse
 import sys
+import os.path
 from itertools import chain
 
 from . import xml_parser, import_object
@@ -13,7 +14,8 @@ def main(argv = None):
     parser = argparse.ArgumentParser(description='Translate register map XML files into other formats')
     parser.add_argument('format')
     parser.add_argument('srcdir')
-    parser.add_argument('--output', default='-')
+    parser.add_argument('--output', help='Output directory for files.', default=None)
+    parser.add_argument('--verbose', help='Name files as they are created.', action="store_true")
     
     args = parser.parse_args(argv)
     
@@ -31,7 +33,7 @@ def main(argv = None):
     
     # And do the outputs.
     for v in chain(parser.components.values(), parser.memorymaps.values()):
-        f = formatkls(output=args.output)
+        f = formatkls(output='-', directory=args.output, verbose=args.verbose)
         f.execute(v)
         
 if __name__ == '__main__':

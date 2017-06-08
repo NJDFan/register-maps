@@ -4,6 +4,7 @@ import textwrap
 from .visitor import Visitor
 
 class tree(Visitor):
+    extension = '.txt'
     indentper = '    '
     
     def begin(self, startnode):

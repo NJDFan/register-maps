@@ -34,50 +34,103 @@ class Visitor:
     encoding = None
     extension = ''
     
-    def __init__(self, output=None):
+    def __init__(self, output=None, directory=None, verbose=True):
         """Create this visitor bound to an output.
         
-        Output can be:
-            None
-                Allow no output
-            '-'
-                Output to standard output
-            an open File object
-                Output to that file
-            a directory name
-                Output to files in that directory
+        Parameters
+        ----------
+        output
+            None for no output, '-' for stdout, the name of a file, or an
+            open file-like object.
+            
+        directory
+            If provided, a directory in which to put files named after the
+            root nodes of the XML files, plus the .extension data member.  So
+            if extension='.html' and the XML file starts with
+            <component name="DIO">, the resulting file will be
+            directory/DIO.html
+            
+            Overrides output if present.
+            
+        verbose
+            Write filenames to sys.stderr if True.
+            
+        Basic data members
+        ------------------
+        printoptions
+            A dict of options to pass by default to the print command when
+            calling the print and printf methods.
+        
+        binary
+            Set to True if files should be opened in binary mode.
+            
+        encoding
+            Set to dictate how files are opened in text mode.
+            
+        extension
+            File extension when using directory to create files.  Include
+            the leading '.'
+            
+        Data members created by execute
+        -------------------------------
+        output
+            File-like object that is the default target for print, printf, and
+            write operations.
+            
+        filename
+            The file basename of the output file, or None if not applicable.
+            
+        path
+            The path of the output file, or None if not applicable.
+        
         """
         self.printoptions = {}
         self._output = output
+        self._directory = directory
+        self.path = self.filename = self.output = None
+        self.verbose = verbose
+    
+    def _openfile(self):
+        """Open the file specified by self.path and self.filename as
+        self.output.
         
+        Creates directories as needed.
+        """
+        mode = 'wb' if self.binary else 'w'
+        makedirs(self.path, exist_ok = True)
+        fn = os.path.join(self.path, self.filename)
+        self.output = open(fn, mode, encoding=self.encoding)
+        if self.verbose:
+            print(os.path.join(self.path, self.filename), file=sys.stderr)
+            
     def execute(self, startnode):
         # Figure out what our actual output is going to be
-        if not hasattr(self, 'output'):
+        if self._directory is not None:
+            self.path = self._directory
+            self.filename = startnode.name + self.extension
+            self._openfile()
+        
+        elif isinstance(self._output, str):
             if self._output == '-':
                 self.output = sys.stdout
-            elif isinstance(self._output, IOBase) or self._output is None:
-                self.output = self._output
             else:
-                mode = 'wb' if self.binary else 'w'
-                self.outputdir = self._output
-                makedirs(self.outputdir, exist_ok=True)
-                self.filename = startnode.name + self.extension
-                name = os.path.join(self.outputdir, self.filename)
-                self.output = open(name, mode, encoding=self.encoding)
-            
+                self.filename = os.path.basename(self._output)
+                self.path = os.path.dirname(self._output)
+                self._openfile()
+                
+        else:
+            # This handles None, io.IOBase, and anything else we didn't
+            # cover.  If it misbehaves in the role, it's the user's problem.
+            self.output = self._output
+
+        # Now execute against the node.
         self.begin(startnode)
         return self.finish(self.visit(startnode))
-        
-    def makefilename(self, outputdir, node):
-        """Make a filename for this node."""
-        return 
     
     def visit(self, node):
         """Base visit operation.  This shouldn't need overloading."""
         visitname = 'visit_' + type(node).__name__
-        fn = getattr(self, visitname, None)
-        if fn is None:
-            fn = self.defaultvisit
+        fn = getattr(self, visitname, self.defaultvisit)
         return fn(node)
         
     def visitchildren(self, node, reverse=False):
@@ -182,7 +235,7 @@ class Visitor:
         obj = newtype(*args, **kwargs)
         
         for k, v in self.__dict__.items():
-            if k not in ('_output', 'output'):
+            if k not in ('_output', '_directory', 'output'):
                 setattr(obj, k, v)
         return obj
         

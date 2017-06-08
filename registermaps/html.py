@@ -88,11 +88,9 @@ class basic(Visitor):
     binary = True
     extension = '.html'
     
-    def __init__(self, output):
-        super().__init__(output)
-        self.hlev = 1
-        self.breadcrumbs = None
-        self.offset = 0
+    hlev = 1
+    breadcrumbs = None
+    offset = 0
     
     _headings = [None, E.H1, E.H2, E.H3, E.H4, E.H5, E.H6]
     def heading(self, *args, **kwargs):
@@ -137,7 +135,7 @@ class basic(Visitor):
         if inst:
             title = 'Instance {} of {} Register Map'.format(inst, node.name)
         else:
-            title = '{} Register Map'.format(node.name)
+            title = 'Base {} Register Map'.format(node.name)
         self.title = title
         
         bc = E.DIV(id='breadcrumbs')
@@ -326,28 +324,26 @@ class basic(Visitor):
         desc = node.description or node.binding.description
         
         try:
-            newdir = os.path.join(self.outputdir, self.subdir)
-            makedirs(newdir, exist_ok=True)
-            
-            newfn = node.name + self.extension
-            with open(os.path.join(newdir, newfn), 'wb') as f:
-                obj = self.clone(output=f)
-                obj.offset = node.offset
-                obj.outputdir = newdir
-                obj.inst = node.name
-                obj.breadcrumbs = E.A(
-                    self.title,
-                    href=os.path.join('..', self.filename)
-                )
-                obj.execute(node.binding)
+            relativefile = os.path.join(self.subdir, node.name + self.extension)
+            obj = type(self)(
+                output=os.path.join(self.path, relativefile),
+                verbose = self.verbose
+            )
+            obj.offset = node.offset
+            obj.inst = node.name
+            obj.breadcrumbs = E.A(
+                self.title,
+                href=os.path.join('..', self.filename)
+            )
+            obj.execute(node.binding)
                 
-            linkelement = E.A(node.name, href=os.path.join(self.subdir, newfn))
+            linkelement = E.A(node.name, href=relativefile)
         except AttributeError:
             linkelement = node.name
         
         # And provide a table row for the MemoryMap
         return E.TR(
-            E.TD(linkelement), E.TD(self.addressparagraph(node)),
+            E.TD(linkelement), E.TD(hex(node.offset)),
             E.TD(
                 *[E.P(d) for d in desc]
             )
