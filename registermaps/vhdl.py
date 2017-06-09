@@ -18,10 +18,19 @@ import datetime
 from . import xml_parser
 from .visitor import Visitor
 
-dedent = textwrap.dedent
 wrapper = textwrap.TextWrapper(
     expand_tabs=False, replace_whitespace=True, drop_whitespace=True
 )
+
+def dedent(text):
+    """Unindents a triple quoted string, stripping up to 1 newline from
+    each edge."""
+    
+    if text.startswith('\n'):
+        text = text[1:]
+    if text.endswith('\n'):
+        text = text[:-1].rstrip('\t ')
+    return textwrap.dedent(text)
 
 def register_format(element, index=True):
     if element.width == 1:
@@ -38,85 +47,9 @@ def register_format(element, index=True):
     else:
         return fmt
 
-class basic(Visitor):
-    
-    extension = '.vhd'
-    
-    component_fileheader = dedent("""
-    ------------------------------------------------------------------------
-    {name} Register Map
-    Defines the registers in the {name} component.
-    
-    {desc}
-    
-    Generated automatically from {source} on {time:%d %b %Y %H:%M}
-    Do not modify this file directly.
-    ----------------------------------------------------------------------
-    """)
-    
-    use_packages = [
-        'ieee.std_logic_1164.all',
-        'ieee.numeric_std.all'
-    ]
-
-    package_header = "package {pkg} is"
-    
-    package_split = dedent("""
-    end package {pkg};
-    ------------------------------------------------------------------------
-    package body {pkg} is
-    """)
-    
-    package_footer = "end package body {pkg};\n"
-    
-    def printheader(self, node, template):
-        header = template.strip().format(
-            name = node.name,
-            desc = '\n\n'.join(wrapper.fill(d) for d in node.description),
-            source = node.sourcefile,
-            time = datetime.datetime.now(),
-            pkg = self.pkgname
-        )
-        for line in header.splitlines():
-            preamble = '----' if line.startswith('-') else '--  '
-            self.print(preamble, line, sep='')
-        
-    def printlibraries(self):
-        packages = sorted(self.use_packages)
-        lib = None
-        for p in packages:
-            newlib = p.split('.', maxsplit=1)[0]
-            if newlib != lib:
-                lib = newlib
-                if lib != 'work':
-                    self.printf('library {};', lib)
-            self.printf('use {};', p)
-    
-    def visit_Component(self, node):
-        self.pkgname = 'pkg_' + node.name
-        self.printheader(node, self.component_fileheader)
-        self.print()
-        self.printlibraries()
-        self.print()
-        
-        self.printf(self.package_header, pkg=self.pkgname)
-        
-        addr = GenerateAddresses(self.output)
-        types = GenerateTypes(self.output)
-        
-        addr.execute(node)
-        types.execute(node)
-        
-        self.printf(self.package_split, pkg=self.pkgname)
-        
-        addr.printbody()
-        types.printbody()
-        
-        self.printf(self.package_footer, pkg=self.pkgname)
-        
-    def visit_MemoryMap(self, node):
-        pass
-    
+#######################################################################
+# Helper visitors
+#######################################################################
     
 class GenerateAddresses(Visitor):
     """Go through the HtiComponent tree generating address constants.
@@ -181,7 +114,7 @@ class GenerateAddresses(Visitor):
         for b in self.body:
             self.print(b)
 
-class GenerateTypes(Visitor):
+class GenerateBasicTypes(Visitor):
     """Go through the HtiComponent tree generating register types.
     
     Immediately outputs:
@@ -213,7 +146,11 @@ class GenerateTypes(Visitor):
         self.print('---------- Register Types ----------')
         self.printf('subtype t_busdata is std_logic_vector({} downto 0);', node.width-1)
         self.visitchildren(node)
-        self.print()
+        
+        self.printf('type t_{}_regfile is record', node.name)
+        for child, _, _ in node.space.items():
+            self.printf('    {}: {};', child.name, self.namer(child))
+        self.printf('end record t_{}_regfile;', node.name)
         
     def visit_RegisterArray(self, node):
         """Generate the array type and, if necessary, a subsidiary record."""
@@ -247,96 +184,60 @@ class GenerateTypes(Visitor):
         
         Store access function bodies for later.
         """
+    
+        # Function declarations
+        self.printf(dedent("""
+            function DAT_TO_{name}(dat: t_busdata) return t_{name};
+            function {name}_TO_DAT(reg: t_{name}) return t_busdata;
+            procedure UPDATE_{name}(
+                dat: in t_busdata; byteen: in std_logic_vector;
+                variable reg: inout t_{name}));
+            procedure UPDATESIG_{name}(
+                dat: in t_busdata; byteen: in std_logic_vector;
+                signal reg: inout t_{name}));
+            """), name=node.name
+        )
         
-        with self.tempvars(
-            registername=node.name,
-            enumlines=[], tolines=[], fromlines=[],
-            tofn = 'DAT_TO_{}'.format(node.name),
-            fromfn = '{}_TO_DAT'.format(node.name),
-            ):
+        # Function bodies.
+        self.body.append(dedent("""
+            ---- {name} ----
+            function DAT_TO_{name}(dat: t_busdata) return t_{name} is
+            begin""").format(name=node.name)
+        )
+        self.body.extend(self.clone(GenerateD2R).execute(node))
+        self.body.append(dedent("""
+            end function DAT_TO_{name};
+            
+            function {name}_TO_DAT(reg: t_{name}) return t_busdata is
+                variable ret: t_busdata := (others => '0');
+            begin""").format(name=node.name)
+        )
+        self.body.extend(self.clone(GenerateR2D).execute(node))
+        self.body.append(dedent("""
+                return ret;
+            end function {name}_TO_DAT;
+            
+            procedure UPDATE_{name}(
+                dat: in t_busdata; byteen: in std_logic_vector;
+                variable reg: inout t_{name}) is
+            begin""").format(name=node.name)
+        )
+        self.body.extend(self.clone(GenerateRegUpdate).execute(node))
+        self.body.append(dedent("""
+            end procedure UPDATESIG_{name};
+            
+            procedure UPDATESIG_{name}(
+                dat: in t_busdata; byteen: in std_logic_vector;
+                signal reg: inout t_{name}) is
                 
-            if node.space:
-                self.complexRegister(node)
-            else:
-                self.simpleRegister(node)
-            
-            params = {
-                'to' : self.tofn,
-                'from' : self.fromfn,
-                'type' : self.namer(node)
-            }
-            self.printf('pure function {to}(dat : t_busdata) return {type};', **params)
-            self.printf('pure function {from}(dat : {type}) return t_busdata;', **params)
-            self.print()
-
-    def simpleRegister(self, node):
-        """Generate a simple (basetype) register.  node is a Register"""
-        
-        typename = self.namer(node)
-        self.printf('subtype {} is {};', typename, register_format(node))
-            
-        # Build up access function bodies.
-        params = {
-            'to' : 'DAT_TO_{}'.format(node.name),
-            'from' : '{}_TO_DAT'.format(node.name),
-            'type' : typename,
-            'name' : node.name,
-            'high' : node.width-1
-        }
-        
-        self.body.append(dedent("""
-            ---- {name} ----
-            pure function {to}(dat : t_busdata) return {type} is
+                variable r : t_{name};
             begin
-                return {type}(dat({high} downto 0));
-            end function {to};
-            
-            pure function {from}(dat : {type}) return t_busdata is
-                variable ret: t_busdata;
-            begin
-                ret({high} downto 0) := STD_LOGIC_VECTOR(dat);
-                return ret;
-            end function {from};"""
-            ).format(**params))
-                    
-    def complexRegister(self, node):
-        """Generate a complex (record) register.  node is a Register"""
-        
-        typename = self.namer(node)
-        self.printf('type {} is record', typename)
-        self.visitchildren(node)
-        self.printf('end record {};', typename)
-        
-        # Print out constants for any enumerated fields.
-        for e in self.enumlines:
-            self.print(e)
-        
-        # Build up access function bodies.
-        params = {
-            'to' : 'DAT_TO_{}'.format(node.name),
-            'from' : '{}_TO_DAT'.format(node.name),
-            'type' : typename,
-            'name' : node.name,
-            'width' : node.width,
-            'tolines' : ',\n'.join(self.tolines),
-            'fromlines' : '\n'.join(self.fromlines)
-        }
-        self.body.append(dedent("""
-            ---- {name} ----
-            pure function {to}(dat : t_busdata) return {type} is
-            begin
-                return {type}'(
-            {tolines}
-                );
-            end function {to};
-            
-            pure function {from}(dat : {type}) return t_busdata is
-                variable ret: t_busdata;
-            begin
-            {fromlines}
-                return ret;
-            end function {from};"""
-            ).format(**params))
+                r := reg;
+                UPDATE_{name}(dat, byteen, r);
+                reg <= r;
+            end procedure UPDATESIG_{name};
+            """).format(name=node.name)
+        )
                     
     def visit_Field(self, node):
         # If we're hitting a Field we must be inside a Register
@@ -380,3 +281,432 @@ class GenerateTypes(Visitor):
         
         for b in self.body:
             self.print(b)
+
+
+#######################################################################
+# 
+
+class RegisterFunctionGenerator(Visitor):
+    """ABC for function body iterator builders."""
+    
+    def visit_Register(self, node):
+        if node.space:
+            return self.complexRegister(node)
+        else:
+            return self.simpleRegister(node)
+     
+class GenerateD2R(RegisterFunctionGenerator):
+    """Iterable of lines for the function body for DAT_TO_register."""
+     
+    def simpleRegister(self, node):
+        if node.width == 1:
+            line = '    return {fmt}(dat(0));'
+        else:
+            line = '    return {fmt}(dat({high} downto 0));'
+        yield line.format(
+            name=node.name, fmt=register_format(node, False).upper(),
+            high=node.width-1
+        )
+        
+    def complexRegister(self, node):
+        yield "    return t_{name}'(".format(name=node.name)
+        yield ',\n'.join(
+            line for child in self.visitchildren(node) for line in child
+        )
+        yield "    );"
+        
+    def visit_Field(self, node):
+        if node.width == 1:
+            line = '        {name} => dat({high})'
+        else:
+            line = '        {name} => {fmt}(dat({high} downto {low}))'
+        yield line.format(
+            name=node.name, fmt=register_format(node, False).upper(),
+            high=node.offset+node.width-1, low=node.offset
+        )
+        
+class GenerateR2D(RegisterFunctionGenerator):
+    """Iterable of lines for the function body for register_TO_DAT."""
+    
+    def simpleRegister(self, node):
+        if node.width == 1:
+            line = '    ret(0) := reg.{name};'
+        else:
+            line = '    ret({high} downto 0) := STD_LOGIC_VECTOR(reg.{name});'
+        yield line.format(name=node.name, high=node.width-1)
+        
+    def complexRegister(self, node):
+        for c in self.visitchildren(node):
+            yield from c
+    
+    def visit_Field(self, node):
+        if node.width == 1:
+            line = '    ret({high}) := reg.{name};'
+        else:
+            line = '    ret({high} downto {low}) := STD_LOGIC_VECTOR(reg.{name});'
+        yield line.format(
+            name=node.name, high=node.offset+node.width-1, low=node.offset
+        )
+        
+class GenerateRegUpdate(RegisterFunctionGenerator):
+    """Iterable of lines for the function body for UPDATE_register."""
+    
+    def simpleRegister(self, node):
+        fmt = register_format(node, False).upper()
+        for bit, start in enumerate(range(0, node.width, 8)):
+            end = min(start+7, node.width)
+            if start == end:
+                line = 'reg({L}) := dat({L});'
+            else:
+                line = 'reg({H} downto {L}) := {fmt}(dat({H} downto {L}));'
+                
+            yield '    if byteen({}) then'.format(bit)
+            yield '        ' + line.format(fmt = fmt, H = end, L = start)
+            yield '    end if;'
+            
+    
+    def complexRegister(self, node):
+        for bit, start in enumerate(range(0, node.width, 8)):
+            subspace = node.space[start:start+8]
+            if not any(obj for obj, _, _ in subspace):
+                continue
+                
+            yield '    if byteen({}) then'.format(bit)
+            for obj, start, size in subspace:
+                if not obj:
+                    continue
+                if size > 1 or obj.size > 1:
+                    # This field is indexable.
+                    line = '{name}({fh} downto {fl}) := {fmt}(dat({dh} downto {dl}));'
+                else:
+                    # This field is a bit.
+                    line = '{name} := dat({dl});'
+                yield '        ' + line.format(
+                    fh = start+size-1-obj.offset,
+                    fl = start-obj.offset,
+                    dh = start+size-1,
+                    dl = start,
+                    fmt = register_format(obj, False).upper(),
+                    name=obj.name
+                )
+            yield '    end if;'
+
+#######################################################################
+
+
+
+class GenerateWishboneTypes(GenerateBasicTypes):
+    def visit_Register(self, node):
+        """Generate the register type, enumerations, and access
+        function prototypes.
+        
+        Store access function bodies for later.
+        """
+        
+        super().visit_Register(node)
+        
+        self.printf(dedent("""
+            function {regname}_TO_WB(dat : t_{regname}) return t_wb_data;
+            function WB_TO_{regname}(WB_IN : t_wb_mosi; current_dat : t_{regname}) return t_{regname};
+            procedure UPDATE_{regname}(WB_IN : in t_wb_mosi; reg : inout t_{regname});
+            procedure UPDATE_{regname}_SIG(WB_IN : in t_wb_mosi; signal reg : inout t_{regname});
+            """), regname=node.name)
+            
+        self.body.append(dedent("""
+            function {regname}_TO_WB(dat : t_{regname}) return t_wb_data is
+            begin
+                return {regname}_TO_DAT(dat);
+            end function {regname}_TO_WB;
+            
+            function WB_TO_{regname}(WB_IN : t_wb_mosi; current_dat : t_{regname}) return t_{regname} is
+                variable wb  : t_wb_data;
+            begin
+                wb := {regname}_TO_DAT(current_dat);
+                wb := select_data(wb, WB_IN);
+                return DAT_TO_{regname}(wb);
+            end function WB_TO_{regname};
+            
+            procedure UPDATE_{regname}(WB_IN : in t_wb_mosi; reg : inout t_{regname}) is
+                variable wb  : t_wb_data;
+            begin
+                wb := {regname}_TO_DAT(reg);
+                wb := select_data(wb, WB_IN);
+                reg := DAT_TO_{regname}(wb);
+            end function WB_TO_{regname};
+            
+            procedure UPDATE_{regname}_SIG(WB_IN : in t_wb_mosi; signal reg : inout t_{regname}) is
+                variable wb  : t_wb_data;
+            begin
+                wb := {regname}_TO_DAT(reg);
+                wb := select_data(wb, WB_IN);
+                reg <= DAT_TO_{regname}(wb);
+            end function WB_TO_{regname};
+            """
+            ).format(regname=node.name)
+        )
+
+class GenerateWishboneRegUpdate(Visitor):
+    """Generate the automatic bus interface functions."""
+    
+    def visit_Component(self, node):
+        """Create functions to update the entire register file."""
+        
+        proto_var = dedent(
+            """procedure WISHBONE(
+                WB_IN  : in t_wb_mosi;
+                reg    : inout t_{name}_regfile;
+                WB_OUT : out t_wb_miso
+            )""").format(name=node.name)
+            
+        proto_sig = dedent(
+            """procedure WISHBONE_SIG(
+                WB_IN    : in t_wb_mosi;
+              signal reg : inout t_{name}_regfile;
+                WB_OUT   : out t_wb_miso
+            )""").format(name=node.name)
+        
+        self.print(proto_var, ';', sep='')
+        self.print(proto_sig, ';', sep='')
+        
+        # For the body portion, building up two separate functions at one
+        # requires a bit of delicacy.
+        with self.tempvars(varread = [], varwrite = [], sigsigfn = []):
+            self.visitchildren()
+            
+            self.body.append(dedent("""
+            {pv} is
+                variable addr : t_addr;
+            begin
+                addr := GET_ADDR(WB_IN.ADDR);
+                WB_OUT := WB_NULL_SLAVE;
+                if isread(WB_IN) then
+                    WB_OUT := WB_ACK_SLAVE;
+                    case addr is""").format(pv=protovar)
+            )
+            self.body.extend(varfn)
+            self.body.append(dedent("""
+                        when others =>
+                            WB_OUT := WB_BADA_SLAVE;
+                    end case;
+                end if;
+                
+                if iswrite(WB_IN) then
+                    WB_OUT := WB_ACK_SLAVE;
+            """))
+    
+
+#######################################################################
+# Main visitors
+#######################################################################
+
+class basic(Visitor):
+    """Basic VHDL output.
+    
+    This output makes no assumptions about what the bus type is, and expects
+    no support packages to be available.
+    """
+    
+    component_generation = dedent("""
+    Types
+    =====
+    * subtype t_addr of integer
+    * subtype t_busdata of std_logic_vector, component width wide
+    * t_{register}
+      * subtype of std_logic_vector, unsigned, or signed OR
+      * record if the register has fields
+    * record tb_{registerarray} if the registerarray has multiple registers
+    * array ta_{registerarray} of tb_{registerarray} or t_{register}
+    * record t_{component}_regfile to hold the entire register file
+    
+    Constants
+    =========
+    * {registername}_ADDR word offsets from 0 for freestanding registers
+    * {register}_ADDR word offsets from array start in a registerarray
+    * {registerarray}_BASEADDR offsets the same way {register}_ADDR does
+    * {registerarray}_FRAMESIZE is the number of words in each array element
+    * {registerarray}_LASTADDR is the offset for the last word in the array
+    * {register}_{field}_{enum} is a value for field {register}.{field}
+    
+    Public Subprograms
+    ==================
+    * function GET_ADDR(std_logic_vector or unsigned) return t_addr
+      
+      Rips the appropriate number of LSBs to make a word address from.
+      
+    * function DAT_TO_{register}(dat: t_busdata) return t_{register}
+    
+      Takes the correct bits from the bus data and translates them into the
+      basic or record type for the register.  Used for bus writes.
+      
+    * function {register}_TO_DAT(reg: t_{register}) return t_busdata
+    
+      Takes the bits from the basic or record type for the register and puts
+      them together into a bus word.  Unused bits are 0.  Used for bus reads.
+      
+    * procedure UPDATE_{regname}(
+        dat: in t_busdata; byteen: in std_logic_vector;
+        variable reg: inout t_{regname}
+      );
+      
+      In-place update of the data in variable reg.  Used for bus writes.
+      
+    * procedure UPDATESIG_{regname}(...)
+      
+      Same as UPDATE_{regname}, but for a signal reg.
+    """)
+    
+    extension = '.vhd'
+    
+    component_fileheader = dedent("""
+    ------------------------------------------------------------------------
+    {name} Register Map
+    Defines the registers in the {name} component.
+    
+    {desc}
+    
+    Generated automatically from {source} on {time:%d %b %Y %H:%M}
+    Do not modify this file directly.
+    {geninfo}
+    ----------------------------------------------------------------------
+    """)
+    
+    use_packages = [
+        'ieee.std_logic_1164.all',
+        'ieee.numeric_std.all'
+    ]
+
+    package_header = "package {pkg} is"
+    
+    package_split = dedent("""
+    end package {pkg};
+    ------------------------------------------------------------------------
+    package body {pkg} is
+    """)
+    
+    package_footer = "end package body {pkg};\n"
+    
+    typegenerator = GenerateBasicTypes
+    
+    def printheader(self, node, template):
+        header = template.strip().format(
+            name = node.name,
+            desc = '\n\n'.join(wrapper.fill(d) for d in node.description),
+            source = node.sourcefile,
+            time = datetime.datetime.now(),
+            pkg = self.pkgname,
+            geninfo = self.component_generation,
+        )
+        for line in header.splitlines():
+            preamble = '----' if line.startswith('-') else '--  '
+            self.print(preamble, line, sep='')
+        
+    def printlibraries(self):
+        packages = sorted(self.use_packages)
+        lib = None
+        for p in packages:
+            newlib = p.split('.', maxsplit=1)[0]
+            if newlib != lib:
+                lib = newlib
+                if lib != 'work':
+                    self.printf('library {};', lib)
+            self.printf('use {};', p)
+    
+    def visit_Component(self, node):
+        self.pkgname = 'pkg_' + node.name
+        self.printheader(node, self.component_fileheader)
+        self.print()
+        self.printlibraries()
+        self.print()
+        
+        self.printf(self.package_header, pkg=self.pkgname)
+        
+        addr = GenerateAddresses(self.output)
+        types = self.typegenerator(self.output)
+        
+        addr.execute(node)
+        types.execute(node)
+        
+        self.printf(self.package_split, pkg=self.pkgname)
+        
+        addr.printbody()
+        types.printbody()
+        
+        self.printf(self.package_footer, pkg=self.pkgname)
+        
+    def visit_MemoryMap(self, node):
+        pass
+    
+class wishbone(basic):
+    """WISHBONE bus VHDL output.
+    
+    This output generates specific functions and structures to interface these
+    registers to WISHBONE bus.  That bus should be defined in pkg_global, which
+    is taken as a prerequisite for these files.
+    """
+    
+    component_generation = dedent("""
+    Types
+    =====
+    * subtype t_addr of integer
+    * subtype t_busdata of std_logic_vector, component width wide
+    * t_{register}
+      * subtype of std_logic_vector, unsigned, or signed OR
+      * record if the register has fields
+    * record tb_{registerarray} if the registerarray has multiple registers
+    * array ta_{registerarray} of tb_{registerarray} or t_{register}
+    
+    Constants
+    =========
+    * {registername}_ADDR word offsets from 0 for freestanding registers
+    * {register}_ADDR word offsets from array start in a registerarray
+    * {registerarray}_BASEADDR offsets the same way {register}_ADDR does
+    * {registerarray}_FRAMESIZE is the number of words in each array element
+    * {registerarray}_LASTADDR is the offset for the last word in the array
+    * {register}_{field}_{enum} is a value for field {register}.{field}
+    
+    Public Subprograms
+    ==================
+    * function GET_ADDR(std_logic_vector or unsigned) return t_addr
+      
+      Rips the appropriate number of LSBs to make a word address from.
+      
+    * function DAT_TO_{register}(t_busdata) return t_{register}
+    
+      Takes the correct bits from the bus data and translates them into the
+      basic or record type for the register.  Used for bus writes.
+      
+    * function {register}_TO_DAT(t_{register}) return t_busdata
+    
+      Takes the bits from the basic or record type for the register and puts
+      them together into a bus word.  Unused bits are 0.  Used for bus reads.
+      
+    * function WB_TO_{regname}(WB_IN : t_wb_mosi; current_dat : t_{regname}) return t_{regname};
+    
+      Uses the WB_IN.SEL byte enables to return a new register value that
+      incorporates some of the WB_IN.DAT bus data.  Used for bus writes, but
+      deprecated; this is the clunky old solution to this.
+      
+    * function {regname}_TO_WB(dat : t_{regname}) return t_wb_data;
+    
+      Takes the bits from the basic or record type for the register and puts
+      them together into a bus word.  Unused bits are 0.  Used for bus reads.
+      
+    * procedure UPDATE_{regname}(
+        dat : in t_wb_mosi; byteen : in std_logic_vector;
+        variable reg : inout t_{regname}
+      );
+      
+      In-place update of the data in variable reg.  Used for bus writes.
+      
+    * procedure UPDATE_SIG{regname}(...)
+      
+      Same as UPDATE_{regname}, but for a signal reg.
+    """)
+    
+    use_packages = [
+        'ieee.std_logic_1164.all',
+        'ieee.numeric_std.all',
+        'work.pkg_global.all'
+    ]
+
+    typegenerator = GenerateWishboneTypes

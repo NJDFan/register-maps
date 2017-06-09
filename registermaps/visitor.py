@@ -231,12 +231,16 @@ class Visitor:
         
         if newtype is None:
             newtype = type(self)
-        kwargs.setdefault('output', self.output)
         obj = newtype(*args, **kwargs)
         
-        for k, v in self.__dict__.items():
-            if k not in ('_output', '_directory', 'output'):
-                setattr(obj, k, v)
+        transferkeys = set(self.__dict__)
+        if (kwargs.get('output', None) or kwargs.get('directory', None)) is not None:
+            transferkeys.difference_update -= {
+                'output', 'filename', 'path',
+                '_output', '_directory'
+            }
+            
+        obj.__dict__.update((k, self.__dict__[k]) for k in transferkeys)
         return obj
         
         
