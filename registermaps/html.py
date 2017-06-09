@@ -290,7 +290,7 @@ class basic(Visitor):
                     E.HR(),
                     E.TABLE(
                         E.TR(
-                            E.TH('Peripheral'), E.TH('Base Address'), E.TH('Description'),
+                            E.TH('Peripheral'), E.TH('Base Address'), E.TH('Size'), E.TH('Description'),
                             *self.visitchildren(node),
                         ),
                         CLASS('component_list')
@@ -329,7 +329,7 @@ class basic(Visitor):
         # And provide a table row for the MemoryMap
         desc = node.description or node.binding.description
         return E.TR(
-            E.TD(linkelement), E.TD(hex(node.offset)),
+            E.TD(linkelement), E.TD(hex(node.offset)), E.TD(hex(node.size)),
             E.TD(
                 *[E.P(d) for d in desc]
             )

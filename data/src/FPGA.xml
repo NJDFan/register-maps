@@ -9,14 +9,9 @@
     the VME bus.    
     </description>
     
-    <!--
-        We'll manually assign all the devices way up the
-        address map, in order to shorten the decode
-        chains.
-    -->
 	<instance name="IDENT" extern="IDENT"	offset="0x000"/>
 	<instance name="DIO" extern="DIO"	offset="0x040"/>
 	<instance name="ANALOG" extern="ANALOG"	offset="0x060"/>
 	<instance name="CONTROL" extern="CONTROL"	offset="0x080"/>
-	<instance name="BUFFER" extern="BUFFER"	offset="0x100"/>
+	<instance name="BUFFER"/>
 </memorymap>

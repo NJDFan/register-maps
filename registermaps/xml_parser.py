@@ -379,7 +379,8 @@ class Instance(HtiElement):
     Instances bind Components to a MemoryMap.
     
     They must be created after the corresponding Components if no
-    explicit size is given.
+    explicit size is given.  Size is in bytes, whereas Component size was in
+    words.
     """
     
     optional = {
@@ -388,7 +389,7 @@ class Instance(HtiElement):
     }
     defaults = {
         'extern' : lambda self: self.name,
-        'size' : lambda self: self.binding.size
+        'size' : lambda self: self.binding.size * self.binding.width // 8
     }
     
     @property

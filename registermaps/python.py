@@ -49,6 +49,18 @@ class basic(Visitor):
     ##########################################################################
     """)
     
+    memorymap_fileheader = dedent("""
+    ##########################################################################
+    {name} Peripheral Map
+    Defines the registers in the {name} device.
+    
+    {desc}
+    
+    Generated automatically from {source} on {time:%d %b %Y %H:%M}
+    Do not modify this file directly.
+    ##########################################################################
+    """)
+    
     imports = dedent("""
     from ctypes import *
     from bitfield import *
@@ -183,5 +195,34 @@ class basic(Visitor):
         self.printf("{}.{}_{}={}", self.register, self.field, node.name, node.value)
 
     def visit_MemoryMap(self, node):
-        pass
+        """Create a struct representing the entire memory map."""
+        self.printheader(node, self.memorymap_fileheader)
+        self.print(self.imports)
         
+        # We need additional imports for all of the components here.
+        collector = ImportCollector(output=self.output)
+        collector.execute(node)
+        
+        # Go fetch me some field names.
+        with self.tempvars(filltype = 'c_uint8', regwidth=1):
+            self.visitchildren(node)
+            self.printstruct(node)
+        self.printf('assert sizeof({})=={}', node.name, node.size)
+        
+    def visit_Instance(self, node):
+        self.field_format[node] = node.extern
+        
+class ImportCollector(Visitor):
+    """Collect imports of other local modules for a MemoryMap."""
+    
+    def begin(self, startnode):
+        self.seen = set()
+    
+    def visit_MemoryMap(self, node):
+        self.visitchildren(node)
+        
+    def visit_Instance(self, node):
+        component = node.extern 
+        if component not in self.seen:
+            self.seen.add(component)
+            self.printf("from .{0} import {0}", component)

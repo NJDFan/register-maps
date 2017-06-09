@@ -166,7 +166,7 @@ class Visitor:
         
         lastvalue is the return of the top-level visit call.
         """
-        pass
+        return lastvalue
 
     # Convenience output methods.
     def print(self, *args, **kwargs):
