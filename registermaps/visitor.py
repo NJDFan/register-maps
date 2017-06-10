@@ -220,27 +220,3 @@ class Visitor:
             setattr(self, k, v)
         for k in deleteattrs:
             delattr(self, k)
-            
-    def clone(self, newtype=None, *args, **kwargs):
-        """Return an instance of a new Visitor object with a copy of all
-        instance variables from this one.
-        
-        newtype is a subclass of Visitor, which defaults to the class of self.
-        args and kwargs are passed to the constructor.
-        """
-        
-        if newtype is None:
-            newtype = type(self)
-        obj = newtype(*args, **kwargs)
-        
-        transferkeys = set(self.__dict__)
-        if (kwargs.get('output', None) or kwargs.get('directory', None)) is not None:
-            transferkeys.difference_update -= {
-                'output', 'filename', 'path',
-                '_output', '_directory'
-            }
-            
-        obj.__dict__.update((k, self.__dict__[k]) for k in transferkeys)
-        return obj
-        
-        
