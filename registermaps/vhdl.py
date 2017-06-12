@@ -70,7 +70,8 @@ class GenerateAddressConstants(Visitor):
         consts = (
             ('_BASEADDR', node.offset),
             ('_LASTADDR', node.offset+node.size-1),
-            ('_FRAMESIZE', node.framesize)
+            ('_FRAMESIZE', node.framesize),
+            ('_FRAMECOUNT', node.framesize)
         )
         for name, val in consts:
             self.printaddress(node.name+name, val)
@@ -193,8 +194,44 @@ class GenerateFunctionDeclarations(Visitor):
     def visit_Component(self, node):
         self.print('---------- Accessor Functions ----------')
         self.visitchildren(node)
+        self.printf(dedent("""
+            procedure UPDATE_REGFILE(
+                dat: in t_busdata; byteen : in std_logic_vector;
+                offset: in t_addr;
+                variable reg: inout t_{name}_regfile;
+                success: out boolean);
+            procedure UPDATESIG_REGFILE(
+                dat: in t_busdata; byteen : in std_logic_vector;
+                offset: in t_addr;
+                signal reg: inout t_{name}_regfile;
+                success: out boolean);
+            procedure READ_REGFILE(
+                offset: in t_addr;
+                reg: in t_{name}_regfile;
+                dat: out t_busdata;
+                success: out boolean);
+            """), name=node.name
+        )
             
     def visit_RegisterArray(self, node):
+        self.printf(dedent("""
+            procedure UPDATE_{name}(
+                dat: in t_busdata; byteen : in std_logic_vector;
+                offset: in t_addr;
+                variable ra: inout ta_{name};
+                success: out boolean);
+            procedure UPDATESIG_{name}(
+                dat: in t_busdata; byteen : in std_logic_vector;
+                offset: in t_addr;
+                signal ra: inout ta_{name};
+                success: out boolean);
+            procedure READ_{name}(
+                offset: in t_addr;
+                ra: in ta_{name};
+                dat: out t_busdata;
+                success: out boolean);
+            """), name=node.name
+        )
         self.visitchildren(node)
     
     def visit_Register(self, node):
@@ -211,14 +248,230 @@ class GenerateFunctionDeclarations(Visitor):
             """), name=node.name
         )
         
-        
 class GenerateFunctionBodies(Visitor):
     def visit_Component(self, node):
         self.print('---------- Accessor Functions ----------')
         self.visitchildren(node)
-            
+        self.printf('---- Complete Register File ----', name=node.name)
+        
+        self._regfileupdate(node, False)
+        self._regfileupdate(node, True)
+        self._regfileread(node)
+    
+    @staticmethod
+    def _fnclass(sig):
+        """UPDATE or UPDATESIG_"""
+        if sig:
+            return {'fn' : 'UPDATESIG', 'class' : 'signal'}
+        else:
+            return {'fn' : 'UPDATE', 'class' : 'variable'}
+    
+    def _regfileupdate(self, node, sig):
+        """Generate either UPDATE_ or UPDATESIG_ for the whole register file"""
+        
+        params = self._fnclass(sig)
+        whenlines = []
+        for obj, _, _ in node.space.items():
+            if isinstance(obj, xml_parser.Register):
+                line = "when {name}_ADDR => {fn}_{name}(dat, byteen, reg.{name});"
+            elif isinstance(obj, xml_parser.RegisterArray):
+                line = (
+                    "when {name}_BASEADDR to {name}_LASTADDR => "
+                    "{fn}_{name}(dat, byteen, offset-{name}_BASEADDR, reg.{name}, success);"
+                )
+            else:
+                raise ValueError('Child node {}: {} of Component {}'.format(
+                    type(obj).__name__, obj.name, node.name
+                ))
+            whenlines.append(dedent(line).format(name=obj.name, **params))
+        if node.space.gapcount:
+            whenlines.append("when others => success := false;")
+        whenlines = '\n'.join('        ' + w for w in whenlines)
+        
+        self.printf(dedent("""
+            procedure {fn}_REGFILE(
+                dat: in t_busdata; byteen : in std_logic_vector;
+                offset: in t_addr;
+                {class} reg: inout t_{name}_regfile;
+                success: out boolean
+            ) is
+            begin
+                success := true;
+                case offs is
+            {whenlines}
+                end case;
+            end procedure {fn}_REGFILE;
+            """), name=node.name, whenlines=whenlines, **params
+        )
+        
+    def _regfileread(self, node):
+        whenlines = []
+        for obj, _, _ in node.space.items():
+            if isinstance(obj, xml_parser.Register):
+                line = "when {name}_ADDR => dat := {name}_TO_DAT(reg.{name});"
+            elif isinstance(obj, xml_parser.RegisterArray):
+                line = (
+                    "when {name}_BASEADDR to {name}_LASTADDR => "
+                    "READ_{name}(offset-{name}_BASEADDR, reg.{name}, dat, success);"
+                )
+            else:
+                raise ValueError('Child node {}: {} of Component {}'.format(
+                    type(obj).__name__, obj.name, node.name
+                ))
+            whenlines.append(dedent(line).format(name=obj.name))
+        if node.space.gapcount:
+            whenlines.append("when others => success := false; dat := (others => '0');")
+        whenlines = '\n'.join('        ' + w for w in whenlines)
+        
+        self.printf(dedent("""
+            procedure READ_REGFILE(
+                offset: in t_addr;
+                reg: in t_{name}_regfile;
+                dat: out t_busdata;
+                success: out boolean
+            ) is
+            begin
+                success := true;
+                case offs is
+            {whenlines}
+                end case;
+            end procedure READ_{name};
+            """), name=node.name, whenlines = whenlines
+        )
+        
     def visit_RegisterArray(self, node):
+        """Register array access function bodies."""
+
         self.visitchildren(node)
+        self.printf('---- {name} ----', name=node.name)
+        if len(node.space) == 1: 
+            self._simpleregarrayupdate(node, 'UPDATE')
+            self._simpleregarrayupdate(node, 'UPDATESIG')
+            self._simpleregarrayread(node)
+        else:
+            self._complexregarrayupdate(node, 'UPDATE')
+            self._complexregarrayupdate(node, 'UPDATESIG')
+            self._complexregarrayread(node)
+            
+    def _complexregarrayupdate(self, node, sig):
+        """Generate either UPDATE_ or UPDATESIG_ for a hetrogynous RegisterArray"""
+        
+        params = self._fnclass(sig)
+        whenlines = []
+        for obj, _, _ in node.space.items():
+            if isinstance(obj, xml_parser.Register):
+                line = "when {name}_ADDR => {fn}_{name}(dat, byteen, ra(idx).{name});"
+            elif isinstance(obj, xml_parser.RegisterArray):
+                line = (
+                    "when {name}_BASEADDR to {name}_LASTADDR => "
+                    "{fn}_{name}(dat, byteen, offs-{name}_BASEADDR, ra(idx).{name}, success);"
+                )
+            else:
+                raise ValueError('Child node {}: {} of RegisterArray {}'.format(
+                    type(obj).__name__, obj.name, node.name
+                ))
+            whenlines.append(dedent(line).format(name=obj.name, **params))
+        if node.space.gapcount:
+            whenlines.append("when others => success := false;")
+        whenlines = '\n'.join('        ' + w for w in whenlines)
+        
+        self.printf(dedent("""
+            procedure {fn}_{name}(
+                dat: in t_busdata; byteen : in std_logic_vector;
+                offset: in t_addr;
+                {class} ra: inout ta_{name};
+                success: out boolean
+            ) is
+                variable idx: integer range 0 to {name}_FRAMECOUNT-1;
+                variable ofs: integer range 0 to {name}_FRAMESIZE-1;
+            begin
+                idx := offset / {name}_FRAMESIZE;
+                offs := offset mod {name}_FRAMESIZE;
+                success := true;
+                case offs is
+            {whenlines}
+                end case;
+            end procedure {fn}_{name};
+            """), name=node.name, whenlines=whenlines, **params
+        )
+        
+    def _complexregarrayread(self, node):
+        whenlines = []
+        for obj, _, _ in node.space.items():
+            if isinstance(obj, xml_parser.Register):
+                line = "when {name}_ADDR => dat := {name}_TO_DAT(ra(idx).{name});"
+            elif isinstance(obj, xml_parser.RegisterArray):
+                line = (
+                    "when {name}_BASEADDR to {name}_LASTADDR => "
+                    "{READ}_{name}(offs-{name}_BASEADDR, ra(idx).{name}, dat, success);"
+                )
+            else:
+                raise ValueError('Child node {}: {} of RegisterArray {}'.format(
+                    type(obj).__name__, obj.name, node.name
+                ))
+            whenlines.append(dedent(line).format(name=obj.name))
+        if node.space.gapcount:
+            whenlines.append("when others => success := false; dat := (others => '0');")
+        whenlines = '\n'.join('        ' + w for w in whenlines)
+        
+        self.printf(dedent("""
+            procedure READ_{name}(
+                offset: in t_addr;
+                ra: in ta_{name};
+                dat: out t_busdata;
+                success: out boolean
+            ) is
+                variable idx: integer range 0 to {name}_FRAMECOUNT-1;
+                variable ofs: integer range 0 to {name}_FRAMESIZE-1;
+            begin
+                idx := offset / {name}_FRAMESIZE;
+                offs := offset mod {name}_FRAMESIZE;
+                success := true;
+                case offs is
+            {whenlines}
+                end case;
+            end procedure READ_{name};
+            """), name=node.name, whenlines = whenlines
+        )
+        
+    def _simpleregarrayupdate(self, node, sig):
+        """Generate either UPDATE_ or UPDATESIG_ for a homogynous RegisterArray"""
+        
+        params = self._fnclass(sig)
+        child, _, _ = next(node.space.items())
+        self.printf(dedent("""
+            procedure {fn}_{name}(
+                dat: in t_busdata; byteen : in std_logic_vector;
+                offset: in t_addr;
+                {class} ra: inout ta_{name};
+                success: out boolean
+            ) is
+                variable idx: integer range 0 to {name}_FRAMECOUNT-1;
+            begin
+                idx := offset / {name}_FRAMESIZE;
+                success := true;
+                {fn}_{child}(dat, byteen, ra(idx));
+            end procedure {fn}_{name};
+            """), name=node.name, child=child.name, **params
+        )
+        
+    def _simpleregarrayread(self, node):
+        child, _, _ = next(node.space.items())
+        self.printf(dedent("""
+            procedure READ_{name}(
+                offset: in t_addr;
+                ra: in ta_{name};
+                dat: out t_busdata;
+                success: out boolean
+            ) is
+                variable idx: integer range 0 to {name}_FRAMECOUNT-1;
+            begin
+                idx := offset / {name}_FRAMESIZE;
+                success := true;
+                dat := {child}_TO_DAT(ra(idx));
+            end procedure READ_{name};
+            """), name=node.name, child=child.name
+        )
         
     def visit_Register(self, node):
         # Register access function bodies.
@@ -251,8 +504,8 @@ class GenerateFunctionBodies(Visitor):
             
             procedure UPDATESIG_{name}(
                 dat: in t_busdata; byteen: in std_logic_vector;
-                signal reg: inout t_{name}) is
-                
+                signal reg: inout t_{name}
+            ) is
                 variable r : t_{name};
             begin
                 r := reg;
@@ -400,6 +653,7 @@ class basic(Visitor):
     * {register}_ADDR word offsets from array start in a registerarray
     * {registerarray}_BASEADDR offsets the same way {register}_ADDR does
     * {registerarray}_FRAMESIZE is the number of words in each array element
+    * {registerarray}_FRAMECOUNT is the number of FRAMESIZE element in the array
     * {registerarray}_LASTADDR is the offset for the last word in the array
     * {register}_{field}_{enum} is a value for field {register}.{field}
     
