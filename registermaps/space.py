@@ -226,6 +226,9 @@ class Space:
         """Number of gaps in the space."""
         return sum(1 for _ in self.gaps())
     
+    def __len__(self):
+        return sum(1 for _ in self._enumerated_iter())
+    
     def _enumerated_iter(self):
         """Generate (idx, po) pairs of index and PlacedObject. 
         
