@@ -262,7 +262,7 @@ class basic(Visitor):
         
         an = ((node.size-1).bit_length() + 3) // 4
         with self.tempvars(
-            wordwidth=1, address_nibbles=an, 
+            wordwidth=1, address_nibbles=an, base=node.base,
             subdir=node.name+'_instances', hlev=2):
                 
             html = E.HTML(
@@ -303,7 +303,11 @@ class basic(Visitor):
             
         else:
             obj = type(self)(output=filename)
-            obj.offset = node.offset
+            try:
+                obj.offset = node.offset + self.base
+            except TypeError:
+                obj.offset = node.offset
+                
             obj.inst = node.name
             obj.breadcrumbs = E.A(
                 self.title,
@@ -315,9 +319,15 @@ class basic(Visitor):
         
         # And provide a table row for the MemoryMap
         desc = node.description or node.binding.description
+        
+        if isinstance(self.base, int):
+            offset = '0x{:{}X}'.format(node.offset + self.base, self.address_nibbles)
+        else:
+            offset = '{}+0x{:{}X}'.format(self.base, node.offset, self.address_nibbles)
+            
         return E.TR(
             E.TD(linkelement, CLASS('peripheral')),
-            E.TD(hex(node.offset), CLASS('paddress')),
+            E.TD(offset, CLASS('paddress')),
             E.TD(hex(node.size), CLASS('psize')),
             E.TD(
                 *[E.P(d) for d in desc],
