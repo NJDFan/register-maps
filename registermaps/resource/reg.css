@@ -10,8 +10,11 @@ Rob Gaddi, Highland Technology
 body {
     font-family: Verdana, Geneva, sans-serif;
     font-size: 1em;
-    width: 750px;
+    width: 920px;
+    margin: 0 auto;
 }
+
+
 
 h1 {
     color: black;
