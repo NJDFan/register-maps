@@ -2,7 +2,9 @@
 
 import argparse
 import sys
+import traceback
 import os.path
+import importlib
 from itertools import chain
 from . import __version__
 
@@ -18,6 +20,7 @@ def main(argv = None):
     parser.add_argument('--output', help='Output directory for files.', default=None)
     parser.add_argument('--verbose', help='Name files as they are created.', action="store_true")
     parser.add_argument('--version', action='version', version='%(prog)s ' + __version__)
+    parser.add_argument('--debug', nargs='?', help='Run with debugger.  pdb by default, ipdb works as well, anything with a post_mortem() function should.', const='pdb')
     
     args = parser.parse_args(argv)
     
@@ -29,6 +32,14 @@ def main(argv = None):
         package, kls = '.', ofparts[0]
     formatkls = import_object(package, kls)
     
+    # Enable debugging if requested
+    if args.debug:
+        post_mortem = importlib.import_module(args.debug).post_mortem
+        def info(type, value, tb):
+            traceback.print_exception(type, value, tb)
+            post_mortem(tb)
+        sys.excepthook = info
+        
     # Start by reading in the source files.
     parser = xml_parser.XmlParser()
     parser.processDirectory(args.srcdir)
