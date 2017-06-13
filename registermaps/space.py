@@ -307,10 +307,13 @@ class Space:
                 # No items in list yet; nothing to collide with
                 pass
             
-            self._resizer.resize(self, newpo.end)
-            assert(self.size >= newpo.end)
-            assert(self.lastgap().start <= newpo.start)
-            self._items.append(newpo)
+            try:
+                self._resizer.resize(self, newpo.end)
+                assert(self.size >= newpo.end)
+                assert(self.lastgap().start <= newpo.start)
+                self._items.append(newpo)
+            except ValueError as e:
+                raise ValueError("Unable to resize from {1} for object ({0.size}@{0.start})".format(newpo, self.size))
         
         else:
             # Check to find a place to put it.  The first area we find where the
@@ -330,6 +333,9 @@ class Space:
                             newpo, prev_item
                         ))
                     self._items.insert(idx, newpo)
+                    break
+            else:
+                raise RuntimeError('No exit from space loop.')
                     
         return newpo
         

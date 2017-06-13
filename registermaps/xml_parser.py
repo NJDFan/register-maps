@@ -89,7 +89,7 @@ def toint(text):
 def inherit(fieldname):
     """Use as a default function to inherit a field from the parent."""
     def inheritor(self):
-        return getattr(self.parent, fieldname)
+        return getattr(self.parent, fieldname, None)
     return inheritor
 
 ########################################################################
@@ -269,7 +269,8 @@ class HtiElement():
         )
         self.description = []
         self._textdesc(xml_element.text)
-                
+               
+        unplaced_children = []
         for xmlchild in xml_element:
             self._textdesc(xmlchild.tail)
             
@@ -277,12 +278,27 @@ class HtiElement():
             kls = _classlookup(xmlchild.tag)
             htichild = kls(xmlchild, parent=self, sourcefile=self.sourcefile)
             if htichild.ischild:
-                po = self.space.add(htichild, htichild.size, htichild.offset)
-                htichild.place(po)
+                # We want to place everything with an explicitly specified
+                # offset first, then let the unplaced things fill in the
+                # remaining spaces.
+                if htichild.offset is None:
+                    unplaced_children.append(htichild)
+                else:
+                    po = self.space.add(htichild, htichild.size, htichild.offset)
+                    htichild.place(po)
+        
+        for htichild in unplaced_children:
+            # Pick up the ones that didn't have explicit placement.
+            po = self.space.add(htichild, htichild.size, htichild.offset)
+            htichild.place(po)
         
         self.afterchildren()
         if self.size is None:
             self._attrib['size'] = self.space.size
+        if (self.readOnly is None) and self.space.itemcount:
+            self._attrib['readOnly'] = all(obj.readOnly for obj, _, _ in self.space.items())
+        if (self.writeOnly is None) and self.space.itemcount:
+            self._attrib['writeOnly'] = all(obj.writeOnly for obj, _, _ in self.space.items())
         
     def _adddesc(self, text):
         """Append a description element, cleaning whitespace."""
@@ -307,6 +323,8 @@ class HtiElement():
         """Hook to modify the object after the Space is created and filled.
         
         If size is (still) None at the end of this, will be auto-set to space.size 
+        If readOnly is (still) None at the end of this, it will try to learn from
+        its children.
         """
         pass
         
@@ -416,16 +434,15 @@ class Component(HtiElement):
         'writeOnly' : tf,
         '{http://www.w3.org/2001/XMLSchema-instance}noNamespaceSchemaLocation' : str
     }
-    defaults = {
-        'readOnly' : False,
-        'writeOnly' : False,
-    }
+    defaults = {}
     
     space_placer = space.BinaryPlacer
     
     def beforechildren(self):
         if self.size is None:
             self.space_resizer = space.BinaryResizer
+        else:
+            self.space_size = self.size
     
 class Register(HtiElement):
     """
@@ -509,7 +526,8 @@ class Enum(HtiElement):
             self.offset = self.value = po.start
         assert(self.value == po.start)
         assert(self.size == po.size)
-        
+    
+    readOnly = writeOnly = False
     
 class _Array(HtiElement):
     """Arrays represent repeated entities.
