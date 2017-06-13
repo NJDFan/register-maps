@@ -1,3 +1,12 @@
+/*
+CSS style information for Highland-generated HTML register documentation
+This file styles peripheral maps, unbound components, and bound components.
+So everything, basically.
+
+Rob Gaddi, Highland Technology
+12-Jun-2017
+*/
+
 body {
     font-family: Verdana, Geneva, sans-serif;
     font-size: 1em;
@@ -20,15 +29,17 @@ h3 {
     font-size: 1.25em;
 }
 
-div {
-	border: 1px solid Gainsboro;
-	margin: 2px;
-	padding: 2px;
-	page-break-inside: avoid;
+/* Component/Instance specific styles. */
+
+div.register {
+    border: 1px solid Gainsboro;
+    margin: 2px;
+    padding: 2px;
+    page-break-inside: avoid;
 }
 
 div.regarray {
-	border: 2px solid black;
+    border: 2px solid black;
 }
 
 table.bitfield {
@@ -64,3 +75,34 @@ ul.fieldlist {
 .fielddef {
     font-style: italic;
 }
+
+p.address {
+    font-size: 0.8 em;
+    font-style: italic;
+    float: right;
+}
+
+/* MemoryMap specific styles */
+
+table.component_list {
+    border: 2px solid DarkBlue;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+table.component_list th {
+    background-color: PapayaWhip;
+}
+
+table.component_list tr:nth-child(odd) {
+    background-color: #eee;
+}
+
+td.paddress, td.psize {
+    text-align: center;
+    font-family: "Lucida Console", Monaco, monospace;
+    font-size: 0.85em;
+    font-weight: bold;
+}
+
+

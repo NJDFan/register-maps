@@ -164,7 +164,8 @@ class basic(Visitor):
             prefix = self.offset,
             offset = offset,
             nibbles = self.address_nibbles
-        ))
+            ), CLASS('address')
+        )
             
     def visit_RegisterArray(self, node):
         """Generate a RegisterArray DIV."""
@@ -172,8 +173,8 @@ class basic(Visitor):
         framebytes = node.framesize * self.wordwidth
         
         root = E.DIV(CLASS('regarray'), id="ARRAY_" + node.name)
-        root.append(self.heading(node.name))
         root.append(self.addressparagraph(node))
+        root.append(self.heading(node.name))
         root.append(E.P(
             "Array of {} copies, repeats every {} bytes.".format(node.count, framebytes)
         ))
@@ -192,8 +193,8 @@ class basic(Visitor):
         ap.text += ' ' + register_format(node)
         
         root = E.DIV(
-            self.heading(node.name),
             ap,
+            self.heading(node.name),
             *[E.P(d, CLASS('description')) for d in node.description],
             CLASS('register'), id="REG_" + node.name
         )
@@ -266,7 +267,7 @@ class basic(Visitor):
          
     def visit_MemoryMap(self, node):
         """Create an HTML file for a MemoryMap."""
-        self.copyfile('map.css')
+        self.copyfile('reg.css')
         
         self.title = title = node.name + ' Peripheral Map'
         body = E.BODY(
@@ -281,7 +282,7 @@ class basic(Visitor):
                 
             html = E.HTML(
                 E.HEAD(
-                    E.LINK(rel="stylesheet", href="map.css", type="text/css"),
+                    E.LINK(rel="stylesheet", href="reg.css", type="text/css"),
                     E.TITLE(title)
                 ),
                 E.BODY(
@@ -329,9 +330,12 @@ class basic(Visitor):
         # And provide a table row for the MemoryMap
         desc = node.description or node.binding.description
         return E.TR(
-            E.TD(linkelement), E.TD(hex(node.offset)), E.TD(hex(node.size)),
+            E.TD(linkelement, CLASS('peripheral')),
+            E.TD(hex(node.offset), CLASS('paddress')),
+            E.TD(hex(node.size), CLASS('psize')),
             E.TD(
-                *[E.P(d) for d in desc]
+                *[E.P(d) for d in desc],
+                CLASS('pdesc')
             )
         )
         
