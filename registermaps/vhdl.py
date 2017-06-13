@@ -13,13 +13,20 @@
 # do simple things while allowing Visitors to do the more complex work, but
 # that balance is definitely more art than science.
 
+import os
+import os.path
 import textwrap
 import datetime
-from . import xml_parser
+
+from . import xml_parser, resource_text, printverbose
 from .visitor import Visitor
 
 wrapper = textwrap.TextWrapper(
     expand_tabs=False, replace_whitespace=True, drop_whitespace=True
+)
+commentwrapper = textwrap.TextWrapper(
+    expand_tabs=False, replace_whitespace=True, drop_whitespace=True,
+    initial_indent = '--  ', subsequent_indent = '--  '
 )
 
 def dedent(text):
@@ -46,6 +53,21 @@ def register_format(element, index=True):
         return '{0}({1} downto 0)'.format(fmt, element.width-1)
     else:
         return fmt
+        
+def commentblock(text):
+    """Turn a multi-line text block into a multi-line comment block.
+    
+    Paragraphs in the source text should be separated by at least 2
+    newlines.
+    """
+    
+    paragraphs = text.split('\n\n')
+    cbar = '-' * commentwrapper.width
+    return (
+        cbar + '\n' + 
+        '\n--\n'.join(commentwrapper.fill(p) for p in paragraphs) + '\n' + 
+        cbar
+    )
 
 #######################################################################
 # Helper visitors
@@ -240,10 +262,10 @@ class GenerateFunctionDeclarations(Visitor):
             function {name}_TO_DAT(reg: t_{name}) return t_busdata;
             procedure UPDATE_{name}(
                 dat: in t_busdata; byteen: in std_logic_vector;
-                variable reg: inout t_{name}));
+                variable reg: inout t_{name});
             procedure UPDATESIG_{name}(
                 dat: in t_busdata; byteen: in std_logic_vector;
-                signal reg: inout t_{name}));
+                signal reg: inout t_{name});
             """), name=node.name
         )
         
@@ -687,88 +709,24 @@ class basic(Visitor):
     no support packages to be available.
     """
     
-    component_generation = dedent("""
-    Types
-    =====
-    * subtype t_addr of integer
-    * subtype t_busdata of std_logic_vector, component width wide
-    * t_{register}
-      * subtype of std_logic_vector, unsigned, or signed OR
-      * record if the register has fields
-    * record tb_{registerarray} if the registerarray has multiple registers
-    * array ta_{registerarray} of tb_{registerarray} or t_{register}
-    * record t_{component}_regfile to hold the entire register file
-    
-    Constants
-    =========
-    * {registername}_ADDR word offsets from 0 for freestanding registers
-    * {register}_ADDR word offsets from array start in a registerarray
-    * {registerarray}_BASEADDR offsets the same way {register}_ADDR does
-    * {registerarray}_FRAMESIZE is the number of words in each array element
-    * {registerarray}_FRAMECOUNT is the number of FRAMESIZE element in the array
-    * {registerarray}_LASTADDR is the offset for the last word in the array
-    * {register}_{field}_{enum} is a value for field {register}.{field}
-    
-    Public Subprograms
-    ==================
-    * function GET_ADDR(std_logic_vector or unsigned) return t_addr
-      
-      Rips the appropriate number of LSBs to make a word address from.
-      
-    * function DAT_TO_{register}(dat: t_busdata) return t_{register}
-    
-      Takes the correct bits from the bus data and translates them into the
-      basic or record type for the register.  Used for bus writes.
-      
-    * function {register}_TO_DAT(reg: t_{register}) return t_busdata
-    
-      Takes the bits from the basic or record type for the register and puts
-      them together into a bus word.  Unused bits are 0.  Used for bus reads.
-      
-    * procedure UPDATE_{regname}(
-        dat: in t_busdata; byteen: in std_logic_vector;
-        variable reg: inout t_{regname}
-      );
-      
-      In-place update of the data in variable reg.  Used for bus writes.
-      
-    * procedure UPDATESIG_{regname}(...)
-      
-      Same as UPDATE_{regname}, but for a signal reg.
-    """)
-    
     extension = '.vhd'
     
     component_fileheader = dedent("""
-    ------------------------------------------------------------------------
     {name} Register Map
+    
     Defines the registers in the {name} component.
     
     {desc}
     
     Generated automatically from {source} on {time:%d %b %Y %H:%M}
-    Do not modify this file directly.
-    {geninfo}
-    ----------------------------------------------------------------------
+    
+    Do not modify this file directly.  See README.rst for details.
     """)
     
     use_packages = [
         'ieee.std_logic_1164.all',
         'ieee.numeric_std.all'
     ]
-    
-    def printheader(self, node, template):
-        header = template.strip().format(
-            name = node.name,
-            desc = '\n\n'.join(wrapper.fill(d) for d in node.description),
-            source = node.sourcefile,
-            time = datetime.datetime.now(),
-            pkg = self.pkgname,
-            geninfo = self.component_generation,
-        )
-        for line in header.splitlines():
-            preamble = '----' if line.startswith('-') else '--  '
-            self.print(preamble, line, sep='')
         
     def printlibraries(self):
         packages = sorted(self.use_packages)
@@ -786,7 +744,15 @@ class basic(Visitor):
         
         # Comments, libraries, and boilerplate.
         self.pkgname = 'pkg_' + node.name
-        self.printheader(node, self.component_fileheader)
+        
+        self.print(commentblock(
+            self.component_fileheader.format(
+                name = node.name,
+                desc = '\n\n'.join(node.description),
+                source = node.sourcefile,
+                time = datetime.datetime.now(),
+                pkg = self.pkgname
+        )))
         self.print()
         self.printlibraries()
         self.print()
@@ -840,6 +806,15 @@ class basic(Visitor):
         
     def visit_MemoryMap(self, node):
         pass
+    
+    @classmethod
+    def preparedir(kls, directory):
+        """Copy the README.rst file into the target directory."""
+        os.makedirs(directory, exist_ok=True)
+        target = os.path.join(directory, 'README.rst')
+        printverbose(target)
+        with open(target, 'w') as f:
+            f.write(resource_text('resource/vhdl.basic/README.rst'))
     
 class wishbone(basic):
     """WISHBONE bus VHDL output.
