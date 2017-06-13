@@ -249,6 +249,8 @@ class GenerateFunctionDeclarations(Visitor):
         )
         
 class GenerateFunctionBodies(Visitor):
+    """Print function bodies for the package body."""
+    
     def visit_Component(self, node):
         self.print('---------- Accessor Functions ----------')
         self.visitchildren(node)
@@ -266,28 +268,102 @@ class GenerateFunctionBodies(Visitor):
         else:
             return {'fn' : 'UPDATE', 'class' : 'variable'}
     
-    def _regfileupdate(self, node, sig):
-        """Generate either UPDATE_ or UPDATESIG_ for the whole register file"""
+    def _updatewhenlines(self, node, base, offset, sig):
+        """Text block of lines to go in an UPDATE_ function case block.
+        
+        Readable addresses set dat correctly, otherwise clear success.
+        
+        base is 'reg' or 'ra(idx)'
+        offset is 'offset' or 'offs'
+        sig is True for UPDATESIG_ and False for UPDATE_
+        """
         
         params = self._fnclass(sig)
+        params['base'] = base
+        params['offset'] = offset
+        
         whenlines = []
+        gaps = False
         for obj, _, _ in node.space.items():
+            # Is this a thing we can't write to?
+            if (not obj) or obj.readOnly:
+                gaps = True
+                continue
+                
+            # Create a line of how to write to this thing, cook in the
+            # formatting, and hold onto it for a bit.
             if isinstance(obj, xml_parser.Register):
-                line = "when {name}_ADDR => {fn}_{name}(dat, byteen, reg.{name});"
+                line = "when {name}_ADDR => {fn}_{name}(dat, byteen, {base}.{name});"
+                    
             elif isinstance(obj, xml_parser.RegisterArray):
                 line = (
                     "when {name}_BASEADDR to {name}_LASTADDR => "
-                    "{fn}_{name}(dat, byteen, offset-{name}_BASEADDR, reg.{name}, success);"
+                    "{fn}_{name}(dat, byteen, {offset}-{name}_BASEADDR, {base}.{name}, success);"
                 )
+                
             else:
                 raise ValueError('Child node {}: {} of Component {}'.format(
                     type(obj).__name__, obj.name, node.name
                 ))
+                
             whenlines.append(dedent(line).format(name=obj.name, **params))
-        if node.space.gapcount:
+            
+        # Put an others line on if the case wasn't filled.
+        if gaps:
             whenlines.append("when others => success := false;")
-        whenlines = '\n'.join('        ' + w for w in whenlines)
+            
+        # Indent all those lines and slam them together into a multi-line block.
+        return '\n'.join('        ' + w for w in whenlines)
+    
+    def _readwhenlines(self, node, base, offset):
+        """Text block of lines to go in a READ function case block.
         
+        Readable addresses set dat correctly, otherwise clear success.
+        
+        base is 'reg' or 'ra(idx)'
+        offset is 'offset' or 'offs'
+        """
+        
+        whenlines = []
+        gaps = False
+        for obj, _, _ in node.space:
+            # Is this a thing we can't read from?
+            if (not obj) or obj.writeOnly:
+                gaps = True
+                continue
+                
+            # Create a line of how to read from this thing, cook in the
+            # formatting, and hold onto it for a bit.
+            if isinstance(obj, xml_parser.Register):
+                line = "when {name}_ADDR => dat := {name}_TO_DAT({base}.{name});"
+                    
+            elif isinstance(obj, xml_parser.RegisterArray):
+                line = (
+                    "when {name}_BASEADDR to {name}_LASTADDR => "
+                    "READ_{name}({offset}-{name}_BASEADDR, {base}.{name}, dat, success);"
+                )
+                
+            else:
+                raise ValueError('Child node {}: {} of {}: {}'.format(
+                    type(obj).__name__, obj.name, type(self).__name__, node.name
+                ))
+                
+            whenlines.append(
+                dedent(line).format(name=obj.name, base=base, offset=offset)
+            )
+            
+        # Put an others line on if the case wasn't filled.
+        if gaps:
+            whenlines.append("when others => success := false;")
+            
+        # Indent all those lines and slam them together into a multi-line block.
+        return '\n'.join('        ' + w for w in whenlines)
+        
+    def _regfileupdate(self, node, sig):
+        """Print either UPDATE_ or UPDATESIG_ for the whole register file"""
+        
+        params = self._fnclass(sig)
+        whenlines = self._updatewhenlines(node, 'reg', 'offset', sig)
         self.printf(dedent("""
             procedure {fn}_REGFILE(
                 dat: in t_busdata; byteen : in std_logic_vector;
@@ -297,6 +373,7 @@ class GenerateFunctionBodies(Visitor):
             ) is
             begin
                 success := true;
+                dat := (others => 'X');
                 case offs is
             {whenlines}
                 end case;
@@ -305,24 +382,9 @@ class GenerateFunctionBodies(Visitor):
         )
         
     def _regfileread(self, node):
-        whenlines = []
-        for obj, _, _ in node.space.items():
-            if isinstance(obj, xml_parser.Register):
-                line = "when {name}_ADDR => dat := {name}_TO_DAT(reg.{name});"
-            elif isinstance(obj, xml_parser.RegisterArray):
-                line = (
-                    "when {name}_BASEADDR to {name}_LASTADDR => "
-                    "READ_{name}(offset-{name}_BASEADDR, reg.{name}, dat, success);"
-                )
-            else:
-                raise ValueError('Child node {}: {} of Component {}'.format(
-                    type(obj).__name__, obj.name, node.name
-                ))
-            whenlines.append(dedent(line).format(name=obj.name))
-        if node.space.gapcount:
-            whenlines.append("when others => success := false; dat := (others => '0');")
-        whenlines = '\n'.join('        ' + w for w in whenlines)
+        """Print READ_ for the whole register file."""
         
+        whenlines = self._readwhenlines(node, 'reg', 'offset')
         self.printf(dedent("""
             procedure READ_REGFILE(
                 offset: in t_addr;
@@ -345,36 +407,19 @@ class GenerateFunctionBodies(Visitor):
         self.visitchildren(node)
         self.printf('---- {name} ----', name=node.name)
         if len(node.space) == 1: 
-            self._simpleregarrayupdate(node, 'UPDATE')
-            self._simpleregarrayupdate(node, 'UPDATESIG')
+            self._simpleregarrayupdate(node, False)
+            self._simpleregarrayupdate(node, True)
             self._simpleregarrayread(node)
         else:
-            self._complexregarrayupdate(node, 'UPDATE')
-            self._complexregarrayupdate(node, 'UPDATESIG')
+            self._complexregarrayupdate(node, False)
+            self._complexregarrayupdate(node, True)
             self._complexregarrayread(node)
             
     def _complexregarrayupdate(self, node, sig):
         """Generate either UPDATE_ or UPDATESIG_ for a hetrogynous RegisterArray"""
         
         params = self._fnclass(sig)
-        whenlines = []
-        for obj, _, _ in node.space.items():
-            if isinstance(obj, xml_parser.Register):
-                line = "when {name}_ADDR => {fn}_{name}(dat, byteen, ra(idx).{name});"
-            elif isinstance(obj, xml_parser.RegisterArray):
-                line = (
-                    "when {name}_BASEADDR to {name}_LASTADDR => "
-                    "{fn}_{name}(dat, byteen, offs-{name}_BASEADDR, ra(idx).{name}, success);"
-                )
-            else:
-                raise ValueError('Child node {}: {} of RegisterArray {}'.format(
-                    type(obj).__name__, obj.name, node.name
-                ))
-            whenlines.append(dedent(line).format(name=obj.name, **params))
-        if node.space.gapcount:
-            whenlines.append("when others => success := false;")
-        whenlines = '\n'.join('        ' + w for w in whenlines)
-        
+        whenlines = self._updatewhenlines(node, 'ra(idx)', 'offs', sig)
         self.printf(dedent("""
             procedure {fn}_{name}(
                 dat: in t_busdata; byteen : in std_logic_vector;
@@ -388,6 +433,7 @@ class GenerateFunctionBodies(Visitor):
                 idx := offset / {name}_FRAMESIZE;
                 offs := offset mod {name}_FRAMESIZE;
                 success := true;
+                dat := (others => 'X');
                 case offs is
             {whenlines}
                 end case;
@@ -396,24 +442,9 @@ class GenerateFunctionBodies(Visitor):
         )
         
     def _complexregarrayread(self, node):
-        whenlines = []
-        for obj, _, _ in node.space.items():
-            if isinstance(obj, xml_parser.Register):
-                line = "when {name}_ADDR => dat := {name}_TO_DAT(ra(idx).{name});"
-            elif isinstance(obj, xml_parser.RegisterArray):
-                line = (
-                    "when {name}_BASEADDR to {name}_LASTADDR => "
-                    "{READ}_{name}(offs-{name}_BASEADDR, ra(idx).{name}, dat, success);"
-                )
-            else:
-                raise ValueError('Child node {}: {} of RegisterArray {}'.format(
-                    type(obj).__name__, obj.name, node.name
-                ))
-            whenlines.append(dedent(line).format(name=obj.name))
-        if node.space.gapcount:
-            whenlines.append("when others => success := false; dat := (others => '0');")
-        whenlines = '\n'.join('        ' + w for w in whenlines)
+        """Generate a READ procedure for a hetrogynous RegisterArray."""
         
+        whenlines = self._readwhenlines(node, 'ra(idx)', 'offs')
         self.printf(dedent("""
             procedure READ_{name}(
                 offset: in t_addr;
@@ -435,10 +466,20 @@ class GenerateFunctionBodies(Visitor):
         )
         
     def _simpleregarrayupdate(self, node, sig):
-        """Generate either UPDATE_ or UPDATESIG_ for a homogynous RegisterArray"""
+        """Print either UPDATE_ or UPDATESIG_ for a homogynous RegisterArray"""
         
         params = self._fnclass(sig)
         child, _, _ = next(node.space.items())
+        if child.readOnly:
+            filling = ['success := false;']
+        else:
+            filling = [
+                'idx := offset / {name}_FRAMESIZE;',
+                'success := true;',
+                '{fn}_{child}(dat, byteen, ra(idx));'
+            ]
+        filling = '\n'.join('    ' + line for line in filling)
+            
         self.printf(dedent("""
             procedure {fn}_{name}(
                 dat: in t_busdata; byteen : in std_logic_vector;
@@ -448,15 +489,28 @@ class GenerateFunctionBodies(Visitor):
             ) is
                 variable idx: integer range 0 to {name}_FRAMECOUNT-1;
             begin
-                idx := offset / {name}_FRAMESIZE;
-                success := true;
-                {fn}_{child}(dat, byteen, ra(idx));
+            {filling}
             end procedure {fn}_{name};
-            """), name=node.name, child=child.name, **params
+            """), name=node.name, child=child.name, filling=filling, **params
         )
         
     def _simpleregarrayread(self, node):
+        """Print the READ_ code for a homogynous RegisterArray"""
+        
         child, _, _ = next(node.space.items())
+        if child.writeOnly:
+            filling = [
+                "dat := (others => 'X')",
+                'success := false;'
+            ]
+        else:
+            filling = [
+                'idx := offset / {name}_FRAMESIZE;',
+                'success := true;',
+                'dat := {child}_TO_DAT(ra(idx));'
+            ]
+        filling = '\n'.join('    ' + line for line in filling)
+        
         self.printf(dedent("""
             procedure READ_{name}(
                 offset: in t_addr;
@@ -466,15 +520,14 @@ class GenerateFunctionBodies(Visitor):
             ) is
                 variable idx: integer range 0 to {name}_FRAMECOUNT-1;
             begin
-                idx := offset / {name}_FRAMESIZE;
-                success := true;
-                dat := {child}_TO_DAT(ra(idx));
+            {filling}
             end procedure READ_{name};
-            """), name=node.name, child=child.name
+            """), name=node.name, child=child.name, filling=filling
         )
         
     def visit_Register(self, node):
-        # Register access function bodies.
+        """Print register access function bodies."""
+        
         self.printf(dedent("""
             ---- {name} ----
             function DAT_TO_{name}(dat: t_busdata) return t_{name} is
