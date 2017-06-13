@@ -1,4 +1,8 @@
-"""Defines a base Visitor class for all the outputs."""
+"""Defines a base Visitor class for all the outputs.
+
+This class does almost all of the lifting for output generation.  It's super
+important; don't gloss this one over.
+"""
 
 from io import IOBase
 from collections import ChainMap

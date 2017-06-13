@@ -163,10 +163,9 @@ class GenerateTypes(Visitor):
         
         else:
             # We're a simple register
-            self.printf('subtype t_{name} is {fmt}({H} downto 0);',
+            self.printf('subtype t_{name} is {fmt};',
                 name=node.name,
                 fmt = register_format(node),
-                H = node.width-1
             )
                     
     def visit_Field(self, node):
@@ -374,7 +373,7 @@ class GenerateFunctionBodies(Visitor):
             begin
                 success := true;
                 dat := (others => 'X');
-                case offs is
+                case offset is
             {whenlines}
                 end case;
             end procedure {fn}_REGFILE;
