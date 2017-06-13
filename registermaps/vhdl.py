@@ -21,13 +21,7 @@ import datetime
 from . import xml_parser, resource_text, printverbose
 from .visitor import Visitor
 
-wrapper = textwrap.TextWrapper(
-    expand_tabs=False, replace_whitespace=True, drop_whitespace=True
-)
-commentwrapper = textwrap.TextWrapper(
-    expand_tabs=False, replace_whitespace=True, drop_whitespace=True,
-    initial_indent = '--  ', subsequent_indent = '--  '
-)
+wrapper = textwrap.TextWrapper()
 
 def dedent(text):
     """Unindents a triple quoted string, stripping up to 1 newline from
@@ -57,22 +51,158 @@ def register_format(element, index=True):
 def commentblock(text):
     """Turn a multi-line text block into a multi-line comment block.
     
-    Paragraphs in the source text should be separated by at least 2
-    newlines.
+    Paragraphs in the source text are separated by newlines.
     """
     
-    paragraphs = text.split('\n\n')
-    cbar = '-' * commentwrapper.width
+    wrapper = textwrap.TextWrapper(
+        width = 76,
+        replace_whitespace = False,
+        drop_whitespace = False
+    )
+    
+    cbar = '-' * (wrapper.width + 4)
+    paragraphs = text.splitlines()
+    wraplists = (wrapper.wrap(p) if p else [''] for p in paragraphs)
+    lines = (line for thislist in wraplists for line in thislist)
     return (
         cbar + '\n' + 
-        '\n--\n'.join(commentwrapper.fill(p) for p in paragraphs) + '\n' + 
+        '\n'.join('--  ' + x for x in lines) + '\n' + 
         cbar
     )
 
 #######################################################################
 # Helper visitors
 #######################################################################
+
+class FixReservedWords(Visitor):
+    """Modify the tree for legal VHDL.
     
+    Any names that are with illegal VHDL characters will be changed.
+    
+    All nodes will be given a .identifier that is related the name, but
+    has a _0 appended if the name is a reserved word.
+    
+    Return a list of the changes, each change is (type, old, new), such as
+    ('register identifier', 'MONARRAY.OUT', 'MONARRAY.OUT_0').
+    """
+    
+    # VHDL identifiers must start with a letter and cannot end with an
+    # underscore.  We'll take our definitions of letters and digits straight
+    # from the 2008 LRM §15.2.  Note there is no uppercase equivalent
+    # for ß or ÿ.
+    
+    uppercase = 'ABCDEFGHIJKLMNOPQRSTUVWXYZÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖØÙÚÛÜÝÞ'
+    lowercase = 'abcdefghijklmnopqrstuvwxyzßàáâãäåæçèéêëìíîïðñòóôõöøùúûüýþÿ'
+    letters = uppercase + lowercase
+    word_chars = letters + '0123456789_'
+    
+    # Again from the 2008 LRM, §15.10.
+    reserved_words = set("""
+        abs fairness nand select
+        access file new sequence
+        after for next severity
+        alias force nor signal
+        all function not shared
+        and null sla
+        architecture generate sll
+        array generic of sra
+        assert group on srl
+        assume guarded open strong
+        assume_guarantee or subtype
+        attribute if others
+        impure out then
+        begin in to
+        block inertial package transport
+        body inout parameter type
+        buffer is port
+        bus postponed unaffected
+        label procedure units
+        case library process until
+        component linkage property use
+        configuration literal protected
+        constant loop pure variable
+        context vmode
+        cover map range vprop
+        mod record vunit
+        default register
+        disconnect reject wait
+        downto release when
+        rem while
+        else report with
+        elsif restrict
+        end restrict_guarantee xnor
+        entity return xor
+        exit rol
+        ror""".split()
+    )
+    
+    def invalidvhdl(self, name):
+        """Return None if name is valid VHDL, otherwise a new name that is."""
+    
+        # First character must be a letter
+        it = iter(name)
+        first = next(it)
+        if first not in self.letters:
+            raise ValueError("{} {} does not start with valid letter.".format(
+                ntype, node.name
+            ))
+        newchars = [first]
+        
+        # Later characters can be anything
+        changed = False
+        char = first
+        for char in it:
+            if char not in self.word_chars:
+                changed = True
+                char = '_'
+            newchars.append(char)
+            
+        # But we can't end with an underline
+        if char == '_':
+            newchars.append('_0')
+            changed = True
+            
+        if changed:
+            return ''.join(newchars)
+        else:
+            return None
+    
+    def defaultvisit(self, node):
+        """All nodes behave the same."""
+        
+        ntype = type(node).__name__.lower()
+        
+        # First off, check to see if it's even a valid VHDL identifier.
+        oldname = node.name
+        newname = self.invalidvhdl(oldname)
+        
+        # If it wasn't even valid VHDL it can't be a reserved word.
+        if newname:
+            node.name = node.identifier = newname
+            changes = [(ntype + ' name', oldname, newname)]
+        
+        # Reserved words need a new identifier but not a new name
+        elif node.name.lower() in self.reserved_words:
+            newname = node.name + '_0'
+            node.identifier = newname
+            changes = [(ntype + ' identifier', node.name, newname)]
+            
+        # All good here
+        else:
+            node.identifier = newname = oldname
+            changes = []
+        
+        # Sweep the children too
+        changes.extend(
+            (ctype, oldname + '.' + old, newname + '.' + new)
+                for childchanges in self.visitchildren(node)
+                for ctype, old, new in childchanges
+        )
+        return changes
+        
+    def visit_Enum(self, node):
+        return []
+
 class GenerateAddressConstants(Visitor):
     """Print address constants into the package header."""
         
@@ -81,7 +211,7 @@ class GenerateAddressConstants(Visitor):
     
     def visit_Component(self, node):
         maxaddr = node.size - 1
-        self.print('---------- Address Constants ----------')
+        self.print(commentblock('Address Constants'))
         self.printf('subtype t_addr is integer range 0 to {};', maxaddr)
         
         self.visitchildren(node)
@@ -133,7 +263,7 @@ class GenerateTypes(Visitor):
     def visit_Component(self, node):
         """Provide the header for the component-level file."""
         
-        self.print('---------- Register Types ----------')
+        self.print(commentblock('Register Types'))
         self.printf('subtype t_busdata is std_logic_vector({} downto 0);', node.width-1)
         
         # First define all the registers and registerarrays
@@ -142,7 +272,7 @@ class GenerateTypes(Visitor):
         # Now create a gestalt structure for the entire register file.
         self.printf('type t_{}_regfile is record', node.name)
         for child, _, _ in node.space.items():
-            self.printf('    {}: {};', child.name, self.namer(child))
+            self.printf('    {}: {};', child.identifier, self.namer(child))
         self.printf('end record t_{}_regfile;', node.name)
         
     def visit_RegisterArray(self, node):
@@ -153,7 +283,7 @@ class GenerateTypes(Visitor):
         
         # Now we can define the array type.
         fields = [
-            (child.name, self.namer(child))
+            (child.identifier, self.namer(child))
                 for child, _, _ in node.space.items()
         ]
         if len(fields) == 1:
@@ -194,7 +324,7 @@ class GenerateTypes(Visitor):
         """Generate record field definitions, and gather enumeration constants."""
         
         with self.tempvars(field=node, fieldtype=register_format(node)):
-            self.printf('    {}: {};', node.name, self.fieldtype)
+            self.printf('    {}: {};', node.identifier, self.fieldtype)
             self.visitchildren(node)
         
     def visit_Enum(self, node):
@@ -213,7 +343,7 @@ class GenerateFunctionDeclarations(Visitor):
     """Print function declaration statements for the package header."""
     
     def visit_Component(self, node):
-        self.print('---------- Accessor Functions ----------')
+        self.print(commentblock('Accessor Functions'))
         self.visitchildren(node)
         self.printf(dedent("""
             procedure UPDATE_REGFILE(
@@ -273,7 +403,28 @@ class GenerateFunctionBodies(Visitor):
     """Print function bodies for the package body."""
     
     def visit_Component(self, node):
-        self.print('---------- Accessor Functions ----------')
+        """Print all function bodies for the Component"""
+        
+        self.print(commentblock('Address Grabbers'))
+        maxaddr = (node.size * node.width // 8) - 1
+        high = maxaddr.bit_length() - 1;
+        self.printf(dedent("""
+            function GET_ADDR(address: std_logic_vector) return t_addr is
+                variable normal : std_logic_vector(address'length-1 downto 0);
+            begin
+                normal := address;
+                return TO_INTEGER(UNSIGNED(normal({high} downto 0)));
+            end function GET_ADDR;
+            
+            function GET_ADDR(address: unsigned) return t_addr is
+            begin
+                return TO_INTEGER(address({high} downto 0));
+            end function GET_ADDR;
+            
+            """), high=high
+        )
+        
+        self.print(commentblock('Accessor Functions'))
         self.visitchildren(node)
         self.printf('---- Complete Register File ----', name=node.name)
         
@@ -314,12 +465,12 @@ class GenerateFunctionBodies(Visitor):
             # Create a line of how to write to this thing, cook in the
             # formatting, and hold onto it for a bit.
             if isinstance(obj, xml_parser.Register):
-                line = "when {name}_ADDR => {fn}_{name}(dat, byteen, {base}.{name});"
+                line = "when {name}_ADDR => {fn}_{name}(dat, byteen, {base}.{identifier});"
                     
             elif isinstance(obj, xml_parser.RegisterArray):
                 line = (
                     "when {name}_BASEADDR to {name}_LASTADDR => "
-                    "{fn}_{name}(dat, byteen, {offset}-{name}_BASEADDR, {base}.{name}, success);"
+                    "{fn}_{name}(dat, byteen, {offset}-{name}_BASEADDR, {base}.{identifier}, success);"
                 )
                 
             else:
@@ -327,7 +478,9 @@ class GenerateFunctionBodies(Visitor):
                     type(obj).__name__, obj.name, node.name
                 ))
                 
-            whenlines.append(dedent(line).format(name=obj.name, **params))
+            whenlines.append(dedent(line).format(
+                name=obj.name, identifier=obj.identifier, **params)
+            )
             
         # Put an others line on if the case wasn't filled.
         if gaps:
@@ -356,12 +509,12 @@ class GenerateFunctionBodies(Visitor):
             # Create a line of how to read from this thing, cook in the
             # formatting, and hold onto it for a bit.
             if isinstance(obj, xml_parser.Register):
-                line = "when {name}_ADDR => dat := {name}_TO_DAT({base}.{name});"
+                line = "when {name}_ADDR => dat := {name}_TO_DAT({base}.{identifier});"
                     
             elif isinstance(obj, xml_parser.RegisterArray):
                 line = (
                     "when {name}_BASEADDR to {name}_LASTADDR => "
-                    "READ_{name}({offset}-{name}_BASEADDR, {base}.{name}, dat, success);"
+                    "READ_{name}({offset}-{name}_BASEADDR, {base}.{identifier}, dat, success);"
                 )
                 
             else:
@@ -370,8 +523,10 @@ class GenerateFunctionBodies(Visitor):
                 ))
                 
             whenlines.append(
-                dedent(line).format(name=obj.name, base=base, offset=offset)
-            )
+                dedent(line).format(
+                    name=obj.name, identifier=obj.identifier,
+                    base=base, offset=offset
+            ))
             
         # Put an others line on if the case wasn't filled.
         if gaps:
@@ -639,21 +794,21 @@ class GenerateR2D(RegisterFunctionGenerator):
     
     def simpleRegister(self, node):
         if node.width == 1:
-            line = '    ret(0) := reg.{name};'
+            line = '    ret(0) := reg.{identifier};'
         else:
-            line = '    ret({high} downto 0) := STD_LOGIC_VECTOR(reg.{name});'
-        self.printf(line, name=node.name, high=node.width-1)
+            line = '    ret({high} downto 0) := STD_LOGIC_VECTOR(reg.{identifier});'
+        self.printf(line, identifier=node.identifier, high=node.width-1)
         
     def complexRegister(self, node):
         self.visitchildren(node)
     
     def visit_Field(self, node):
         if node.width == 1:
-            line = '    ret({high}) := reg.{name};'
+            line = '    ret({high}) := reg.{identifier};'
         else:
-            line = '    ret({high} downto {low}) := STD_LOGIC_VECTOR(reg.{name});'
+            line = '    ret({high} downto {low}) := STD_LOGIC_VECTOR(reg.{identifier});'
         self.printf(line,
-            name=node.name, high=node.offset+node.width-1, low=node.offset
+            identifier=node.identifier, high=node.offset+node.width-1, low=node.offset
         )
         
 class GenerateRegUpdate(RegisterFunctionGenerator):
@@ -684,17 +839,17 @@ class GenerateRegUpdate(RegisterFunctionGenerator):
                     continue
                 if size > 1 or obj.size > 1:
                     # This field is indexable.
-                    line = 'reg.{name}({fh} downto {fl}) := {fmt}(dat({dh} downto {dl}));'
+                    line = 'reg.{identifier}({fh} downto {fl}) := {fmt}(dat({dh} downto {dl}));'
                 else:
                     # This field is a bit.
-                    line = 'reg.{name} := dat({dl});'
+                    line = 'reg.{identifier} := dat({dl});'
                 self.printf('        ' + line,
                     fh = start+size-1-obj.offset,
                     fl = start-obj.offset,
                     dh = start+size-1,
                     dl = start,
                     fmt = register_format(obj, False).upper(),
-                    name=obj.name
+                    identifier=obj.identifier
                 )
             self.print( '    end if;')
 
@@ -710,13 +865,14 @@ class basic(Visitor):
     """
     
     extension = '.vhd'
+    encoding = 'iso-8859-1'
     
     component_fileheader = dedent("""
     {name} Register Map
     
     Defines the registers in the {name} component.
     
-    {desc}
+    {desc}{changes}
     
     Generated automatically from {source} on {time:%d %b %Y %H:%M}
     
@@ -727,6 +883,20 @@ class basic(Visitor):
         'ieee.std_logic_1164.all',
         'ieee.numeric_std.all'
     ]
+    
+    def begin(self, startnode):
+        changer = FixReservedWords()
+        changed_nodes = changer.execute(startnode)
+        if changed_nodes:
+            changes =  (
+                'Changes from XML:\n' +
+                '\n'.join(
+                    '    {0[0]}: {0[1]} -> {0[2]}'.format(c) for c in changed_nodes
+            ))
+            printverbose(changes)
+            self.changes = '\n\n' + changes
+        else:
+            self.changes = ''
         
     def printlibraries(self):
         packages = sorted(self.use_packages)
@@ -744,14 +914,14 @@ class basic(Visitor):
         
         # Comments, libraries, and boilerplate.
         self.pkgname = 'pkg_' + node.name
-        
         self.print(commentblock(
             self.component_fileheader.format(
                 name = node.name,
                 desc = '\n\n'.join(node.description),
                 source = node.sourcefile,
                 time = datetime.datetime.now(),
-                pkg = self.pkgname
+                pkg = self.pkgname,
+                changes = self.changes
         )))
         self.print()
         self.printlibraries()
@@ -777,27 +947,6 @@ class basic(Visitor):
             """), pkg=self.pkgname
         )
         
-        # Address functions
-        maxaddr = (node.size * node.width // 8) - 1
-        addrbits = maxaddr.bit_length()
-        high = addrbits - 1;
-        self.printf(dedent("""
-            ---- Address Grabbers ----
-            function GET_ADDR(address: std_logic_vector) return t_addr is
-                variable normal : std_logic_vector(address'length-1 downto 0);
-            begin
-                normal := address;
-                return TO_INTEGER(UNSIGNED(normal({high} downto 0)));
-            end function GET_ADDR;
-            
-            function GET_ADDR(address: unsigned) return t_addr is
-            begin
-                return TO_INTEGER(address({high} downto 0));
-            end function GET_ADDR;
-            
-            """), high=high
-        )
-        
         # Type conversion functions
         GenerateFunctionBodies(self.output).execute(node)
         
@@ -816,75 +965,3 @@ class basic(Visitor):
         with open(target, 'w') as f:
             f.write(resource_text('resource/vhdl.basic/README.rst'))
     
-class wishbone(basic):
-    """WISHBONE bus VHDL output.
-    
-    This output generates specific functions and structures to interface these
-    registers to WISHBONE bus.  That bus should be defined in pkg_global, which
-    is taken as a prerequisite for these files.
-    """
-    
-    component_generation = dedent("""
-    Types
-    =====
-    * subtype t_addr of integer
-    * subtype t_busdata of std_logic_vector, component width wide
-    * t_{register}
-      * subtype of std_logic_vector, unsigned, or signed OR
-      * record if the register has fields
-    * record tb_{registerarray} if the registerarray has multiple registers
-    * array ta_{registerarray} of tb_{registerarray} or t_{register}
-    
-    Constants
-    =========
-    * {registername}_ADDR word offsets from 0 for freestanding registers
-    * {register}_ADDR word offsets from array start in a registerarray
-    * {registerarray}_BASEADDR offsets the same way {register}_ADDR does
-    * {registerarray}_FRAMESIZE is the number of words in each array element
-    * {registerarray}_LASTADDR is the offset for the last word in the array
-    * {register}_{field}_{enum} is a value for field {register}.{field}
-    
-    Public Subprograms
-    ==================
-    * function GET_ADDR(std_logic_vector or unsigned) return t_addr
-      
-      Rips the appropriate number of LSBs to make a word address from.
-      
-    * function DAT_TO_{register}(t_busdata) return t_{register}
-    
-      Takes the correct bits from the bus data and translates them into the
-      basic or record type for the register.  Used for bus writes.
-      
-    * function {register}_TO_DAT(t_{register}) return t_busdata
-    
-      Takes the bits from the basic or record type for the register and puts
-      them together into a bus word.  Unused bits are 0.  Used for bus reads.
-      
-    * function WB_TO_{regname}(WB_IN : t_wb_mosi; current_dat : t_{regname}) return t_{regname};
-    
-      Uses the WB_IN.SEL byte enables to return a new register value that
-      incorporates some of the WB_IN.DAT bus data.  Used for bus writes, but
-      deprecated; this is the clunky old solution to this.
-      
-    * function {regname}_TO_WB(dat : t_{regname}) return t_wb_data;
-    
-      Takes the bits from the basic or record type for the register and puts
-      them together into a bus word.  Unused bits are 0.  Used for bus reads.
-      
-    * procedure UPDATE_{regname}(
-        dat : in t_wb_mosi; byteen : in std_logic_vector;
-        variable reg : inout t_{regname}
-      );
-      
-      In-place update of the data in variable reg.  Used for bus writes.
-      
-    * procedure UPDATE_SIG{regname}(...)
-      
-      Same as UPDATE_{regname}, but for a signal reg.
-    """)
-    
-    use_packages = [
-        'ieee.std_logic_1164.all',
-        'ieee.numeric_std.all',
-        'work.pkg_global.all'
-    ]

@@ -10,6 +10,19 @@ no support packages to be available.  Words below encased in <angle brackets>
 are meant to represent a fill-in-the-blank of the name of that thing, so a
 ``tb_<REGISTERARRAY>`` would be ``tb_BUFFER`` for a RegisterArray named BUFFER.
 
+Depending on the choice of names of things in the XML, it may be necessary to
+change the names of things to avoid either illegal characters or VHDL reserved
+words.  Check the header comments of the generated VHDL files for information
+about changed elements.
+
+Changed **names** indicate characters that were not legal VHDL, and will be
+different in all contexts, illegal characters will be repaced with _ characters.
+
+Changed **identifiers** mean only that they cannot be bare words, which means
+they are only different in the context of something.*identifier*, such as 
+registers in components or fields in registers.  Changed identifiers will get
+an "_0" extension.
+
 Types
 =====
 
