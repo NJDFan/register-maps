@@ -7,7 +7,7 @@ from lxml.html import builder as E
 from lxml.html import tostring
 
 from .visitor import Visitor
-from . import resource_bytes
+from . import resource_bytes, printverbose, ProgramGlobals
 
 CLASS = E.CLASS
     
@@ -75,6 +75,8 @@ class basic(Visitor):
     breadcrumbs = None
     offset = 0
     
+    styledir = ''
+    
     _headings = [None, E.H1, E.H2, E.H3, E.H4, E.H5, E.H6]
     def heading(self, *args, **kwargs):
         """Create an H1-H6 for self.hlev=1-6 respectively."""
@@ -91,22 +93,6 @@ class basic(Visitor):
             ), CLASS='footer')
         )
     
-    def copyfile(self, name):
-        """Copy a file from our internal resource folder to the output
-        directory.
-        
-        """
-        
-        try:
-            if self.path is not None:
-                filename = os.path.join(self.path, name)
-                dirname = os.path.dirname(filename)
-                os.makedirs(dirname, exist_ok=True)
-                with open(filename, 'wb') as f:
-                    f.write(resource_bytes('resource/' + name))
-        except AttributeError:
-            pass
-    
     def visit(self, node):
         """This hook is in to help debugging, it should be null in effect."""
         val = super().visit(node)
@@ -114,9 +100,6 @@ class basic(Visitor):
         return val
     
     def visit_Component(self, node):
-        # Ensure a local copy of the stylesheet.
-        self.copyfile('reg.css')
-        
         inst = getattr(self, 'inst', None)
         if inst:
             title = 'Instance {} of {} Register Map'.format(inst, node.name)
@@ -134,10 +117,14 @@ class basic(Visitor):
         ww = node.width // 8
         an = ((node.size-1).bit_length() + 3) // 4
         
+        stylesheet = E.LINK(
+            rel='stylesheet', type='text/css',
+            href=os.path.join(self.styledir, 'reg.css')
+        )
         with self.tempvars(wordwidth=ww, address_nibbles=an, hlev=2):
             html = E.HTML(
                 E.HEAD(
-                    E.LINK(rel="stylesheet", href="reg.css", type="text/css"),
+                    stylesheet,
                     E.TITLE(title)
                 ),
                 E.BODY(
@@ -267,8 +254,6 @@ class basic(Visitor):
          
     def visit_MemoryMap(self, node):
         """Create an HTML file for a MemoryMap."""
-        self.copyfile('reg.css')
-        
         self.title = title = node.name + ' Peripheral Map'
         body = E.BODY(
             E.H1(title),
@@ -317,13 +302,14 @@ class basic(Visitor):
             linkelement = node.name
             
         else:
-            obj = type(self)(output=filename, verbose=self.verbose)
+            obj = type(self)(output=filename)
             obj.offset = node.offset
             obj.inst = node.name
             obj.breadcrumbs = E.A(
                 self.title,
                 href=os.path.join('..', self.filename)
             )
+            obj.styledir = os.path.join(self.styledir, '..')
             obj.execute(node.binding)
             linkelement = E.A(node.name, href=relativefile)
         
@@ -345,3 +331,12 @@ class basic(Visitor):
         except TypeError:
             self.write(tostring(tree, pretty_print=True, encoding='unicode'))
         
+    @classmethod
+    def preparedir(kls, directory):
+        """Copy the CSS into the target directory."""
+        
+        os.makedirs(directory, exist_ok=True)
+        target = os.path.join(directory, 'reg.css')
+        printverbose(target)
+        with open(target, 'wb') as f:
+            f.write(resource_bytes('resource/html.basic/reg.css'))

@@ -7,6 +7,8 @@ Rob Gaddi, Highland Technology
 12-Jun-2017
 */
 
+/* Overall guiding rules */
+
 body {
     font-family: Verdana, Geneva, sans-serif;
     font-size: 1em;
@@ -14,7 +16,9 @@ body {
     margin: 0 auto;
 }
 
-
+@media print body {
+    width: 100%;
+}
 
 h1 {
     color: black;
@@ -38,7 +42,6 @@ div.register {
     border: 1px solid Gainsboro;
     margin: 2px;
     padding: 2px;
-    page-break-inside: avoid;
 }
 
 div.regarray {
@@ -50,6 +53,7 @@ table.bitfield {
     margin-left: auto;
     margin-right: auto;
     text-align: center;
+    page-break-inside: avoid;
 }
 
 tr.bit_numbers {
@@ -95,6 +99,10 @@ table.component_list {
 
 table.component_list th {
     background-color: PapayaWhip;
+}
+
+table.component_list tr {
+    page-break-inside: avoid;
 }
 
 table.component_list tr:nth-child(odd) {

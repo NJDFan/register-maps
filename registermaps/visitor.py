@@ -11,6 +11,8 @@ from os import makedirs
 import os.path
 import contextlib
 
+from . import printverbose, ProgramGlobals
+
 class Visitor:
     """An abstract Visitor for working with HtiComponent trees.
     
@@ -38,7 +40,7 @@ class Visitor:
     encoding = None
     extension = ''
     
-    def __init__(self, output=None, directory=None, verbose=True):
+    def __init__(self, output=None, directory=None):
         """Create this visitor bound to an output.
         
         Parameters
@@ -55,9 +57,6 @@ class Visitor:
             directory/DIO.html
             
             Overrides output if present.
-            
-        verbose
-            Write filenames to sys.stderr if True.
             
         Basic data members
         ------------------
@@ -92,7 +91,6 @@ class Visitor:
         self._output = output
         self._directory = directory
         self.path = self.filename = self.output = None
-        self.verbose = verbose
     
     def _openfile(self):
         """Open the file specified by self.path and self.filename as
@@ -104,11 +102,15 @@ class Visitor:
         makedirs(self.path, exist_ok = True)
         fn = os.path.join(self.path, self.filename)
         self.output = open(fn, mode, encoding=self.encoding)
-        if self.verbose:
-            print(os.path.join(self.path, self.filename), file=sys.stderr)
+        printverbose(os.path.join(self.path, self.filename))
             
     def execute(self, startnode):
-        # Figure out what our actual output is going to be
+        """Run the Visitor starting from startnode.
+        
+        If a directory or filename has been provided, this is when the file
+        will actually be opened.
+        """
+        
         if self._directory is not None:
             self.path = self._directory
             self.filename = startnode.name + self.extension
@@ -224,3 +226,13 @@ class Visitor:
             setattr(self, k, v)
         for k in deleteattrs:
             delattr(self, k)
+
+    @classmethod
+    def preparedir(kls, directory):
+        """Hook for whatever actions are necessary to prepare a target
+        directory for target files.
+        
+        Usually this will entail copying additional files over, like CSS
+        templates or README files.
+        """
+        pass

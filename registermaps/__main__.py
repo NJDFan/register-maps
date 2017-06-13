@@ -6,7 +6,7 @@ import traceback
 import os.path
 import importlib
 from itertools import chain
-from . import __version__
+from . import __version__, ProgramGlobals
 
 from . import xml_parser, import_object
 
@@ -40,13 +40,19 @@ def main(argv = None):
             post_mortem(tb)
         sys.excepthook = info
         
+    # And verbosity
+    ProgramGlobals['verbose'] = args.verbose
+        
     # Start by reading in the source files.
     parser = xml_parser.XmlParser()
     parser.processDirectory(args.srcdir)
     
     # And do the outputs.
+    if args.output is not None:
+        formatkls.preparedir(args.output)
+        
     for v in chain(parser.components.values(), parser.memorymaps.values()):
-        f = formatkls(output='-', directory=args.output, verbose=args.verbose)
+        f = formatkls(output='-', directory=args.output)
         f.execute(v)
         
 if __name__ == '__main__':
