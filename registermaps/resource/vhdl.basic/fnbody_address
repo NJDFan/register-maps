@@ -9,3 +9,9 @@ function GET_ADDR(address: unsigned) return t_addr is
 begin
 	return TO_INTEGER(address({high} downto 0));
 end function GET_ADDR;
+
+-- This function local only
+function IS_HIGH(x : std_ulogic) return boolean is
+begin
+    return (x = '1') or (x = 'H');
+end function IS_HIGH;

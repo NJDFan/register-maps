@@ -340,7 +340,7 @@ class GenerateFunctionDeclarations(Visitor):
         # Register access functions
         self.printf(template['fndecl_register'], name=node.name)
         
-class _FunctionBodyRecordHelper:
+class _fnbodyrecord:
     """
     Supports GenerateFunctionBodies by creating the "when" block
     inside of a case statement.
@@ -360,34 +360,24 @@ class _FunctionBodyRecordHelper:
         skipontrue (str): Fallback to others if 'readOnly' or 'writeOnly' is true.
         indent (int): Number of spaces to indent each line by.  Default is 8
         
-    Use instances of the class as a function, pointed at the parent node.
+    Returns
+    -------
+        A callable that turns a node into a multiline text block that can be
+        inserted into the VHDL procedure, inside the case statement.
     """
     
-    def __init__(self,
-        Register, RegisterArray,
+    def __init__(self, Register, RegisterArray,
         others = "when others => success := false;",
         skipontrue = 'readOnly',
         indent=8):
-             
-        self.Register = Register
-        self.RegisterArray = RegisterArray
+        
+        self.Register = dedent(Register).strip()
+        self.RegisterArray = dedent(RegisterArray).strip()
         self.others = others
         self.skipontrue = skipontrue
-        self.indent = indent
-    
+        self.indent = 8
+        
     def __call__(self, node):
-        """Create a text block of the appropriate lines.
-        
-        Args
-        ----
-            node (HtiElement): Parent node to work from
-        
-        Returns
-        -------
-            A multiline text block that can be inserted into the VHDL
-            procedure, inside of a case statement.
-        """
-        
         whenlines = []
         gaps = False
         for obj, _, _ in node.space:
@@ -415,58 +405,59 @@ class _FunctionBodyRecordHelper:
             ' ' * self.indent
         )
         
-_component_update = _FunctionBodyRecordHelper(
-    Register = "when {child.name}_ADDR => UPDATE_{child.name}(dat, byteen, reg.{child.identifier});",
-    RegisterArray = dedent("""
-        when {child.name}_BASEADDR to {child.name}_LASTADDR =>
-            UPDATE_{child.name}(dat, byteen, offset-{child.name}_BASEADDR, reg.{child.identifier}, success);"""
-    )
-)
-_component_updatesig = _FunctionBodyRecordHelper(
-    Register = "when {child.name}_ADDR => UPDATESIG_{child.name}(dat, byteen, reg.{child.identifier});",
-    RegisterArray = dedent("""
-        when {child.name}_BASEADDR to {child.name}_LASTADDR =>
-            UPDATESIG_{child.name}(dat, byteen, offset-{child.name}_BASEADDR, reg.{child.identifier}, success);"""
-    )
-)
-_component_read = _FunctionBodyRecordHelper(
-    Register = "when {child.name}_ADDR => dat := {child.name}_TO_DAT(reg.{child.identifier});",
-    RegisterArray = dedent("""
-        when {child.name}_BASEADDR to {child.name}_LASTADDR =>
-            READ_{child.name}(offset-{child.name}_BASEADDR, reg.{child.identifier}, dat, success);"""
-    ),
-    skipontrue = 'writeOnly'
-)
-_regarray_update = _FunctionBodyRecordHelper(
-    Register = "when {child.name}_ADDR => UPDATE_{child.name}(dat, byteen, ra(idx).{child.identifier});",
-    RegisterArray = dedent("""
-        when {child.name}_BASEADDR to {child.name}_LASTADDR =>
-            UPDATE_{child.name}(dat, byteen, offs-{child.name}_BASEADDR, ra(idx).{child.identifier}, success);"""
-    )
-)
-_regarray_updatesig = _FunctionBodyRecordHelper(
-    Register = dedent("""
-        when {child.name}_ADDR =>
-            UPDATE_{child.name}(dat, byteen, temp.{child.identifier});
-            ra(idx).{child.identifier} <= temp.{child.identifier};"""
-    ),
-    RegisterArray = dedent("""
-        when {child.name}_BASEADDR to {child.name}_LASTADDR =>
-            UPDATE_{child.name}(dat, byteen, offs-{child.name}_BASEADDR, ra(idx).{child.identifier}, success);
-            ra(idx).{child.identifier} <= temp.{child.identifier};"""
-    )
-)
-_regarray_read = _FunctionBodyRecordHelper(
-    Register = "when {child.name}_ADDR => dat := {child.name}_TO_DAT(ra(idx).{child.identifier});",
-    RegisterArray = dedent("""
-        when {child.name}_BASEADDR to {child.name}_LASTADDR =>
-            READ_{child.name}(offs-{child.name}_BASEADDR, ra(idx).{child.identifier}, dat, success);"""
-    ),
-    skipontrue = 'writeOnly'
-)
-
 class GenerateFunctionBodies(Visitor):
     """Print function bodies for the package body."""
+    
+    _component_update = _fnbodyrecord(
+        Register = "when {child.name}_ADDR => UPDATE_{child.name}(dat, byteen, reg.{child.identifier});",
+        RegisterArray = """
+            when {child.name}_BASEADDR to {child.name}_LASTADDR =>
+                UPDATE_{child.name}(dat, byteen, offset-{child.name}_BASEADDR, reg.{child.identifier}, success);
+            """
+    )   
+    _component_updatesig = _fnbodyrecord(
+        Register = "when {child.name}_ADDR => UPDATESIG_{child.name}(dat, byteen, reg.{child.identifier});",
+        RegisterArray = """
+            when {child.name}_BASEADDR to {child.name}_LASTADDR =>
+                UPDATESIG_{child.name}(dat, byteen, offset-{child.name}_BASEADDR, reg.{child.identifier}, success);
+            """
+    )
+    _component_read = _fnbodyrecord(
+        Register = "when {child.name}_ADDR => dat := {child.name}_TO_DAT(reg.{child.identifier});",
+        RegisterArray = """
+            when {child.name}_BASEADDR to {child.name}_LASTADDR =>
+                READ_{child.name}(offset-{child.name}_BASEADDR, reg.{child.identifier}, dat, success);
+            """,
+        skipontrue = 'writeOnly'
+    )
+    
+    _regarray_update = _fnbodyrecord(
+        Register = "when {child.name}_ADDR => UPDATE_{child.name}(dat, byteen, ra(idx).{child.identifier});",
+        RegisterArray = """
+            when {child.name}_BASEADDR to {child.name}_LASTADDR =>
+                UPDATE_{child.name}(dat, byteen, offs-{child.name}_BASEADDR, ra(idx).{child.identifier}, success);
+            """
+    )
+    _regarray_updatesig = _fnbodyrecord(
+        Register = """
+            when {child.name}_ADDR =>
+                UPDATE_{child.name}(dat, byteen, temp.{child.identifier});
+                ra(idx).{child.identifier} <= temp.{child.identifier};
+            """,
+        RegisterArray = """
+            when {child.name}_BASEADDR to {child.name}_LASTADDR =>
+                UPDATE_{child.name}(dat, byteen, offs-{child.name}_BASEADDR, ra(idx).{child.identifier}, success);
+                ra(idx).{child.identifier} <= temp.{child.identifier};
+            """
+    )
+    _regarray_read = _fnbodyrecord(
+        Register = "when {child.name}_ADDR => dat := {child.name}_TO_DAT(ra(idx).{child.identifier});",
+        RegisterArray = """
+            when {child.name}_BASEADDR to {child.name}_LASTADDR =>
+                READ_{child.name}(offs-{child.name}_BASEADDR, ra(idx).{child.identifier}, dat, success);
+            """,
+        skipontrue = 'writeOnly'
+    )
     
     def visit_Component(self, node):
         """Print all function bodies for the Component"""
@@ -480,9 +471,9 @@ class GenerateFunctionBodies(Visitor):
         
         self.printf(template['fnbody_component'],
             name = node.name,
-            updatelines = _component_update(node),
-            updatesiglines = _component_updatesig(node),
-            readlines = _component_read(node),
+            updatelines = self._component_update(node),
+            updatesiglines = self._component_updatesig(node),
+            readlines = self._component_read(node),
         )
 
     def visit_RegisterArray(self, node):
@@ -507,151 +498,117 @@ class GenerateFunctionBodies(Visitor):
         else:
             self.printf(template['fnbody_registerarray_complex'],
                 name = node.name,
-                updatelines = _regarray_update(node),
-                updatesiglines = _regarray_updatesig(node),
-                readlines = _regarray_read(node),
+                updatelines = self._regarray_update(node),
+                updatesiglines = self._regarray_updatesig(node),
+                readlines = self._regarray_read(node),
             )
             
     def visit_Register(self, node):
         """Print register access function bodies."""
         
-        self.printf(dedent("""
-            ---- {name} ----
-            function DAT_TO_{name}(dat: t_busdata) return t_{name} is
-            begin"""), name=node.name
+        self.printf(template['fnbody_register'],
+            name=node.name,
+            d2rlines = GenerateD2R().execute(node),
+            r2dlines = GenerateR2D().execute(node),
+            updatelines = GenerateRegUpdate().execute(node)
         )
-        GenerateD2R(self.output).execute(node)
-        self.printf(dedent("""
-            end function DAT_TO_{name};
-            
-            function {name}_TO_DAT(reg: t_{name}) return t_busdata is
-                variable ret: t_busdata := (others => '0');
-            begin"""), name=node.name
-        )
-        GenerateR2D(self.output).execute(node)
-        self.printf(dedent("""
-                return ret;
-            end function {name}_TO_DAT;
-            
-            procedure UPDATE_{name}(
-                dat: in t_busdata; byteen: in std_logic_vector;
-                variable reg: inout t_{name}) is
-            begin"""), name=node.name
-        )
-        GenerateRegUpdate(self.output).execute(node)
-        self.printf(dedent("""
-            end procedure UPDATE_{name};
-            
-            procedure UPDATESIG_{name}(
-                dat: in t_busdata; byteen: in std_logic_vector;
-                signal reg: inout t_{name}
-            ) is
-                variable r : t_{name};
-            begin
-                r := reg;
-                UPDATE_{name}(dat, byteen, r);
-                reg <= r;
-            end procedure UPDATESIG_{name};
-            """), name=node.name
-        )
-
-class RegisterFunctionGenerator(Visitor):
-    """ABC for function body iterator builders."""
+     
+class _Indent4Visitor(Visitor):
+    def finish(self, lastvalue):
+        return textwrap.indent(lastvalue, '    ')
+     
+class GenerateD2R(_Indent4Visitor):
+    """Block of lines for the function body for DAT_TO_register."""
     
     def visit_Register(self, node):
         if node.space:
-            return self.complexRegister(node)
+            return dedent("""
+                return(
+                {children}
+                );"""
+            ).format(children = ',\n'.join(self.visitchildren(node)))
+            
         else:
-            return self.simpleRegister(node)
-     
-class GenerateD2R(RegisterFunctionGenerator):
-    """Iterable of lines for the function body for DAT_TO_register."""
-     
-    def simpleRegister(self, node):
-        if node.width == 1:
-            line = '    return {fmt}(dat(0));'
-        else:
-            line = '    return {fmt}(dat({high} downto 0));'
-        self.printf(line,
-            name=node.name, fmt=register_format(node, False).upper(),
-            high=node.width-1
-        )
-        
-    def complexRegister(self, node):
-        childlines = ',\n'.join(
-            '        ' + line 
-                for line in self.visitchildren(node)
-        )
-        self.printf(dedent("""
-            return (
-        {childlines}
-            );"""),
-            name=node.name, childlines=childlines
-        )
+            return 'return {fmt}(dat({high} downto 0));'.format(
+                fmt = register_format(node, False).upper(),
+                high = node.width-1
+            )
         
     def visit_Field(self, node):
-        """Return field lines."""
+        """Pull bus data to a record field."""
         if node.width == 1:
-            line = '{name} => dat({high})'
+            line = '    {name} => dat({high})'
         else:
-            line = '{name} => {fmt}(dat({high} downto {low}))'
+            line = '    {name} => {fmt}(dat({high} downto {low}))'
         return line.format(
             name=node.name, fmt=register_format(node, False).upper(),
             high=node.offset+node.width-1, low=node.offset
-        )
+        )  
         
-class GenerateR2D(RegisterFunctionGenerator):
-    """Iterable of lines for the function body for register_TO_DAT."""
+class GenerateR2D(_Indent4Visitor):
+    """Block of lines for the function body for register_TO_DAT."""
     
-    def simpleRegister(self, node):
-        line = '    ret({high} downto 0) := STD_LOGIC_VECTOR(reg);'
-        self.printf(line, identifier=node.identifier, high=node.width-1)
-        
-    def complexRegister(self, node):
-        self.visitchildren(node)
-    
+    def visit_Register(self, node):
+        if node.space:
+            return '\n'.join(self.visitchildren(node))
+        else:
+            return 'ret({high} downto 0) := STD_LOGIC_VECTOR(reg);'.format(
+                high=node.width-1
+            )
+            
     def visit_Field(self, node):
         if node.width == 1:
-            line = '    ret({high}) := reg.{identifier};'
+            line = 'ret({high}) := reg.{identifier};'
         else:
-            line = '    ret({high} downto {low}) := STD_LOGIC_VECTOR(reg.{identifier});'
-        self.printf(line,
+            line = 'ret({high} downto {low}) := STD_LOGIC_VECTOR(reg.{identifier});'
+        return line.format(
             identifier=node.identifier, high=node.offset+node.width-1, low=node.offset
         )
         
-class GenerateRegUpdate(RegisterFunctionGenerator):
+class GenerateRegUpdate(_Indent4Visitor):
     """Iterable of lines for the function body for UPDATE_register."""
     
-    def simpleRegister(self, node):
+    def visit_Register(self, node):
+        return '\n'.join(self.complex(node) if node.space else self.simple(node))
+    
+    def simple(self, node):
+        """Assigns the register byte by byte.
+        
+        Yields:
+            Lines of text
+        """
+        
         fmt = register_format(node, False).upper()
-        for bit, start in enumerate(range(0, node.width, 8)):
+        for byte, start in enumerate(range(0, node.width, 8)):
             end = min(start+7, node.width)
-            if start == end:
-                line = 'reg({L}) := dat({L});'
-            else:
-                line = 'reg({H} downto {L}) := {fmt}(dat({H} downto {L}));'
+            yield dedent("""
+                if IS_HIGH(byteen({byte})) then
+                    reg({H} downto {L}) := {fmt}(dat({H} downto {L}));
+                end if;""".format(byte=byte, fmt=fmt, H=end, L=start),
+            )
             
-            self.printf('    if byteen({}) then', (bit))
-            self.printf('        ' + line, fmt = fmt, H = end, L = start)
-            self.print( '    end if;')
-            
-    def complexRegister(self, node):
-        for bit, start in enumerate(range(0, node.width, 8)):
+    def complex(self, node):
+        """Assigns the register fields byte by byte.
+        
+        Yields:
+            Lines of text
+        """
+        for byte, start in enumerate(range(0, node.width, 8)):
             subspace = node.space[start:start+8]
             if not any(obj for obj, _, _ in subspace):
                 continue
                 
-            self.printf('    if byteen({}) then', bit)
+            yield 'if IS_HIGH(byteen({})) then'.format(byte) 
             for obj, start, size in subspace:
                 if not obj:
                     continue
                 if size > 1 or obj.size > 1:
                     # This field is indexable.
-                    line = 'reg.{identifier}({fh} downto {fl}) := {fmt}(dat({dh} downto {dl}));'
+                    line = '    reg.{identifier}({fh} downto {fl}) := {fmt}(dat({dh} downto {dl}));'
                 else:
                     # This field is a bit.
-                    line = 'reg.{identifier} := dat({dl});'
-                self.printf('        ' + line,
+                    line = '    reg.{identifier} := dat({dl});'
+                yield line.format(
                     fh = start+size-1-obj.offset,
                     fl = start-obj.offset,
                     dh = start+size-1,
@@ -659,7 +616,8 @@ class GenerateRegUpdate(RegisterFunctionGenerator):
                     fmt = register_format(obj, False).upper(),
                     identifier=obj.identifier
                 )
-            self.print( '    end if;')
+                
+            yield 'end if;'
 
 #######################################################################
 # Main visitors
@@ -723,7 +681,8 @@ class basic(Visitor):
         self.printlibraries()
         self.print()
         
-        self.printf("package {pkg} is", pkg=self.pkgname)
+        self.print(commentblock('Package declaration'))
+        self.printf("package {} is", self.pkgname)
         
         # Address Constants
         GenerateAddressConstants(self.output).execute(node)
@@ -736,17 +695,14 @@ class basic(Visitor):
         # Type conversion declarations
         GenerateFunctionDeclarations(self.output).execute(node)
         
-        self.printf(dedent("""
-            end package {pkg};
-            ------------------------------------------------------------------------
-            package body {pkg} is
-            """), pkg=self.pkgname
-        )
+        self.printf('end package {};'.format(self.pkgname))
+        self.print(commentblock('Package body'))
+        self.printf('package body {} is'.format(self.pkgname))
         
         # Type conversion functions
         GenerateFunctionBodies(self.output).execute(node)
         
-        self.printf("end package body {pkg};", pkg=self.pkgname)
+        self.printf("end package body {};", self.pkgname)
         self.print()
         
     def visit_MemoryMap(self, node):
