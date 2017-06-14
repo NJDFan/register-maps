@@ -13,6 +13,11 @@
 # do simple things while allowing Visitors to do the more complex work, but
 # that balance is definitely more art than science.
 
+# Translation to VHDL requires a lot of text templates that were cluttering up
+# the code, so they've been moved to individual text files in the
+# resource/vhdl.basic directory, with a _TemplateLoader class to pull them in
+# as needed.
+
 import os
 import os.path
 import textwrap
@@ -20,8 +25,6 @@ import datetime
 
 from . import xml_parser, resource_text, printverbose
 from .visitor import Visitor
-
-wrapper = textwrap.TextWrapper()
 
 def dedent(text):
     """Unindents a triple quoted string, stripping up to 1 newline from
@@ -47,29 +50,13 @@ def register_format(element, index=True):
         return '{0}({1} downto 0)'.format(fmt, element.width-1)
     else:
         return fmt
-        
+    
 def commentblock(text):
-    """Turn a multi-line text block into a multi-line comment block.
+    """Return text as a comment encased in comment bars."""
     
-    Paragraphs in the source text are separated by newlines.
-    """
+    cbar = '-' * 80
+    return '\n'.join((cbar, textwrap.indent(text.strip(), '--  ', lambda x: True), cbar))
     
-    wrapper = textwrap.TextWrapper(
-        width = 76,
-        replace_whitespace = False,
-        drop_whitespace = False
-    )
-    
-    cbar = '-' * (wrapper.width + 4)
-    paragraphs = text.splitlines()
-    wraplists = (wrapper.wrap(p) if p else [''] for p in paragraphs)
-    lines = (line for thislist in wraplists for line in thislist)
-    return (
-        cbar + '\n' + 
-        '\n'.join('--  ' + x for x in lines) + '\n' + 
-        cbar
-    )
-
 class _TemplateLoader:
     """Convenience tool for text resources available at a certain path.
     
@@ -480,7 +467,6 @@ class GenerateFunctionBodies(Visitor):
         """Register array access function bodies."""
 
         self.visitchildren(node)
-        self.printf('---- {name} ----', name=node.name)
         if len(node.space) == 1:
             child = next(child for child, _, _ in node.space.items())
             if node.readOnly or child.readOnly:
@@ -518,7 +504,7 @@ class _Indent4Visitor(Visitor):
         return textwrap.indent(lastvalue, '    ')
      
 class GenerateD2R(_Indent4Visitor):
-    """Block of lines for the function body for DAT_TO_register."""
+    """Text for the function body for DAT_TO_register."""
     
     def visit_Register(self, node):
         if node.space:
@@ -546,7 +532,7 @@ class GenerateD2R(_Indent4Visitor):
         )  
         
 class GenerateR2D(_Indent4Visitor):
-    """Block of lines for the function body for register_TO_DAT."""
+    """Text for the function body for register_TO_DAT."""
     
     def visit_Register(self, node):
         if node.space:
@@ -566,7 +552,7 @@ class GenerateR2D(_Indent4Visitor):
         )
         
 class GenerateRegUpdate(_Indent4Visitor):
-    """Iterable of lines for the function body for UPDATE_register."""
+    """Text for the function body for UPDATE_register."""
     
     def visit_Register(self, node):
         return '\n'.join(self.complex(node) if node.space else self.simple(node))
@@ -642,13 +628,12 @@ class basic(Visitor):
         changer = FixReservedWords()
         changed_nodes = changer.execute(startnode)
         if changed_nodes:
-            changes =  (
-                'Changes from XML:\n' +
-                '\n'.join(
-                    '    {0[0]}: {0[1]} -> {0[2]}'.format(c) for c in changed_nodes
-            ))
+            changes = (
+                'Changes from XML:\n' +  
+                '\n'.join('    {0[0]}: {0[1]} -> {0[2]}'.format(c) for c in changed_nodes)
+            )
             printverbose(changes)
-            self.changes = '\n\n' + changes
+            self.changes = '\n' + changes + '\n'
         else:
             self.changes = ''
         
@@ -662,21 +647,24 @@ class basic(Visitor):
                 if lib != 'work':
                     self.printf('library {};', lib)
             self.printf('use {};', p)
-    
+            
     def visit_Component(self, node):
         """Create a VHDL file for a Component."""
         
         # Comments, libraries, and boilerplate.
+        
+        wrapper = textwrap.TextWrapper()
+        
         self.pkgname = 'pkg_' + node.name
-        self.print(commentblock(
-            template['header_component'].format(
-                name = node.name,
-                desc = '\n\n'.join(node.description),
-                source = node.sourcefile,
-                time = datetime.datetime.now(),
-                pkg = self.pkgname,
-                changes = self.changes
-        )))
+        header = template['header_component'].format(
+            name = node.name,
+            desc = '\n\n'.join(wrapper.fill(d) for d in node.description),
+            source = node.sourcefile,
+            time = datetime.datetime.now(),
+            pkg = self.pkgname,
+            changes = self.changes
+        )
+        self.print(commentblock(header))
         self.print()
         self.printlibraries()
         self.print()

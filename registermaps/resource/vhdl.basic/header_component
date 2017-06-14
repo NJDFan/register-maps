@@ -2,8 +2,9 @@
     
 Defines the registers in the {name} component.
 
-{desc}{changes}
-
-Generated automatically from {source} on {time:%d %b %Y %H:%M}
+{desc}
+{changes}
+Generated automatically on {time:%d %b %Y %H:%M} from
+{source}
 
 Do not modify this file directly.  See README.rst for details.

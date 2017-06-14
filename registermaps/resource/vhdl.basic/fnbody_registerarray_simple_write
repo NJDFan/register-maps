@@ -1,3 +1,4 @@
+---- {name} ----
 procedure UPDATE_{name}(
 	dat: in t_busdata; byteen : in std_logic_vector;
 	offset: in t_addr;
