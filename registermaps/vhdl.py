@@ -91,10 +91,10 @@ class FixReservedWords(Visitor):
     # from the 2008 LRM §15.2.  Note there is no uppercase equivalent
     # for ß or ÿ.
     
-    uppercase = 'ABCDEFGHIJKLMNOPQRSTUVWXYZÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖØÙÚÛÜÝÞ'
-    lowercase = 'abcdefghijklmnopqrstuvwxyzßàáâãäåæçèéêëìíîïðñòóôõöøùúûüýþÿ'
-    letters = uppercase + lowercase
-    word_chars = letters + '0123456789_'
+    uppercase = set('ABCDEFGHIJKLMNOPQRSTUVWXYZÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖØÙÚÛÜÝÞ')
+    lowercase = set('abcdefghijklmnopqrstuvwxyzßàáâãäåæçèéêëìíîïðñòóôõöøùúûüýþÿ')
+    letters = uppercase | lowercase
+    word_chars = letters | set('0123456789_')
     
     # Again from the 2008 LRM, §15.10.
     reserved_words = set("""
@@ -456,7 +456,7 @@ class GenerateFunctionBodies(Visitor):
         
         whenlines = []
         gaps = False
-        for obj, _, _ in node.space.items():
+        for obj, _, _ in node.space:
             # Is this a thing we can't write to?
             if (not obj) or obj.readOnly:
                 gaps = True
@@ -549,7 +549,6 @@ class GenerateFunctionBodies(Visitor):
             ) is
             begin
                 success := true;
-                dat := (others => 'X');
                 case offset is
             {whenlines}
                 end case;
@@ -570,10 +569,11 @@ class GenerateFunctionBodies(Visitor):
             ) is
             begin
                 success := true;
-                case offs is
+                dat := (others => 'X');
+                case offset is
             {whenlines}
                 end case;
-            end procedure READ_{name};
+            end procedure READ_REGFILE;
             """), name=node.name, whenlines = whenlines
         )
         
@@ -604,12 +604,11 @@ class GenerateFunctionBodies(Visitor):
                 success: out boolean
             ) is
                 variable idx: integer range 0 to {name}_FRAMECOUNT-1;
-                variable ofs: integer range 0 to {name}_FRAMESIZE-1;
+                variable offs: integer range 0 to {name}_FRAMESIZE-1;
             begin
                 idx := offset / {name}_FRAMESIZE;
                 offs := offset mod {name}_FRAMESIZE;
                 success := true;
-                dat := (others => 'X');
                 case offs is
             {whenlines}
                 end case;
@@ -629,11 +628,12 @@ class GenerateFunctionBodies(Visitor):
                 success: out boolean
             ) is
                 variable idx: integer range 0 to {name}_FRAMECOUNT-1;
-                variable ofs: integer range 0 to {name}_FRAMESIZE-1;
+                variable offs: integer range 0 to {name}_FRAMESIZE-1;
             begin
                 idx := offset / {name}_FRAMESIZE;
                 offs := offset mod {name}_FRAMESIZE;
                 success := true;
+                dat := (others => 'X');
                 case offs is
             {whenlines}
                 end case;
@@ -655,20 +655,21 @@ class GenerateFunctionBodies(Visitor):
                 '{fn}_{child}(dat, byteen, ra(idx));'
             ]
         filling = '\n'.join('    ' + line for line in filling)
-            
-        self.printf(dedent("""
-            procedure {fn}_{name}(
-                dat: in t_busdata; byteen : in std_logic_vector;
-                offset: in t_addr;
-                {class} ra: inout ta_{name};
-                success: out boolean
-            ) is
-                variable idx: integer range 0 to {name}_FRAMECOUNT-1;
-            begin
-            {filling}
-            end procedure {fn}_{name};
-            """), name=node.name, child=child.name, filling=filling, **params
+        
+        text = (
+            dedent("""
+                procedure {fn}_{name}(
+                    dat: in t_busdata; byteen : in std_logic_vector;
+                    offset: in t_addr;
+                    {class} ra: inout ta_{name};
+                    success: out boolean
+                ) is
+                    variable idx: integer range 0 to {name}_FRAMECOUNT-1;
+                begin""") +
+            '\n' + filling + '\n' + 
+            'end procedure {fn}_{name};\n'
         )
+        self.printf(text, name=node.name, child=child.name,  **params)
         
     def _simpleregarrayread(self, node):
         """Print the READ_ code for a homogynous RegisterArray"""
@@ -686,20 +687,20 @@ class GenerateFunctionBodies(Visitor):
                 'dat := {child}_TO_DAT(ra(idx));'
             ]
         filling = '\n'.join('    ' + line for line in filling)
-        
-        self.printf(dedent("""
-            procedure READ_{name}(
-                offset: in t_addr;
-                ra: in ta_{name};
-                dat: out t_busdata;
-                success: out boolean
-            ) is
-                variable idx: integer range 0 to {name}_FRAMECOUNT-1;
-            begin
-            {filling}
-            end procedure READ_{name};
-            """), name=node.name, child=child.name, filling=filling
+        text = (
+            dedent("""
+                procedure READ_{name}(
+                    offset: in t_addr;
+                    ra: in ta_{name};
+                    dat: out t_busdata;
+                    success: out boolean
+                ) is
+                    variable idx: integer range 0 to {name}_FRAMECOUNT-1;
+                begin""") + 
+                '\n' + filling + '\n' + 
+                'end procedure READ_{name};\n'
         )
+        self.printf(text, name=node.name, child=child.name)
         
     def visit_Register(self, node):
         """Print register access function bodies."""
@@ -729,7 +730,7 @@ class GenerateFunctionBodies(Visitor):
         )
         GenerateRegUpdate(self.output).execute(node)
         self.printf(dedent("""
-            end procedure UPDATESIG_{name};
+            end procedure UPDATE_{name};
             
             procedure UPDATESIG_{name}(
                 dat: in t_busdata; byteen: in std_logic_vector;
@@ -793,10 +794,7 @@ class GenerateR2D(RegisterFunctionGenerator):
     """Iterable of lines for the function body for register_TO_DAT."""
     
     def simpleRegister(self, node):
-        if node.width == 1:
-            line = '    ret(0) := reg.{identifier};'
-        else:
-            line = '    ret({high} downto 0) := STD_LOGIC_VECTOR(reg.{identifier});'
+        line = '    ret({high} downto 0) := STD_LOGIC_VECTOR(reg);'
         self.printf(line, identifier=node.identifier, high=node.width-1)
         
     def complexRegister(self, node):
