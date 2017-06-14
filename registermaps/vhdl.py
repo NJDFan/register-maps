@@ -399,6 +399,132 @@ class GenerateFunctionDeclarations(Visitor):
             """), name=node.name
         )
         
+class _FunctionBodyRecordHelper:
+    """
+    Supports GenerateFunctionBodies by creating the "when" block
+    inside of a case statement.
+    
+    String template arguments are for use with the format statement and will
+    be passed the following keyword format elements:
+        node
+            The parent node
+        child
+            Each child node
+    
+    Args
+    ----
+        Register (str): String template to use for Register children
+        RegisterArray (str): String template to use for RegisterArray children
+        others (str): String template to use when lookup fails
+        skipontrue (str): Fallback to others if 'readOnly' or 'writeOnly' is true.
+        indent (int): Number of spaces to indent each line by.  Default is 8
+        
+    Use instances of the class as a function, pointed at the parent node.
+    """
+    
+    def __init__(self,
+        Register, RegisterArray,
+        others = "when others => success := false;",
+        skipontrue = 'readOnly',
+        indent=8):
+             
+        self.Register = Register
+        self.RegisterArray = RegisterArray
+        self.others = others
+        self.skipontrue = skipontrue
+        self.indent = indent
+    
+    def __call__(self, node):
+        """Create a text block of the appropriate lines.
+        
+        Args
+        ----
+            node (HtiElement): Parent node to work from
+        
+        Returns
+        -------
+            A multiline text block that can be inserted into the VHDL
+            procedure, inside of a case statement.
+        """
+        
+        whenlines = []
+        gaps = False
+        for obj, _, _ in node.space:
+            # Is this a thing we can't write to?
+            if (not obj) or getattr(obj, self.skipontrue):
+                gaps = True
+                continue
+            
+            try:
+                line = getattr(self, type(obj).__name__)
+            except AttributeError:
+                raise ValueError('Child node {}: {} of {} {}'.format(
+                    type(obj).__name__, obj.name,
+                    type(node).__name__, node.name
+                ))
+            whenlines.append(line.format(node=node, child=obj))
+            
+        # Put an others line on if the case wasn't filled.
+        if gaps:
+            whenlines.append(self.others.format(node=node))
+            
+        # Indent all those lines and slam them together into a multi-line block.
+        return textwrap.indent(
+            '\n'.join(whenlines),
+            ' ' * self.indent
+        )
+        
+_component_update = _FunctionBodyRecordHelper(
+    Register = "when {child.name}_ADDR => UPDATE_{child.name}(dat, byteen, reg.{child.identifier});",
+    RegisterArray = dedent("""
+        when {child.name}_BASEADDR to {child.name}_LASTADDR =>
+            UPDATE_{child.name}(dat, byteen, offset-{child.name}_BASEADDR, reg.{child.identifier}, success);"""
+    )
+)
+_component_updatesig = _FunctionBodyRecordHelper(
+    Register = "when {child.name}_ADDR => UPDATESIG_{child.name}(dat, byteen, reg.{child.identifier});",
+    RegisterArray = dedent("""
+        when {child.name}_BASEADDR to {child.name}_LASTADDR =>
+            UPDATESIG_{child.name}(dat, byteen, offset-{child.name}_BASEADDR, reg.{child.identifier}, success);"""
+    )
+)
+_component_read = _FunctionBodyRecordHelper(
+    Register = "when {child.name}_ADDR => dat := {child.name}_TO_DAT(reg.{child.identifier});",
+    RegisterArray = dedent("""
+        when {child.name}_BASEADDR to {child.name}_LASTADDR =>
+            READ_{child.name}(offset-{child.name}_BASEADDR, reg.{child.identifier}, dat, success);"""
+    ),
+    skipontrue = 'writeOnly'
+)
+_regarray_update = _FunctionBodyRecordHelper(
+    Register = "when {child.name}_ADDR => UPDATE_{child.name}(dat, byteen, ra(idx).{child.identifier});",
+    RegisterArray = dedent("""
+        when {child.name}_BASEADDR to {child.name}_LASTADDR =>
+            UPDATE_{child.name}(dat, byteen, offs-{child.name}_BASEADDR, ra(idx).{child.identifier}, success);"""
+    )
+)
+_regarray_updatesig = _FunctionBodyRecordHelper(
+    Register = dedent("""
+        when {child.name}_ADDR =>
+            temp := ra(idx);
+            UPDATE_{child.name}(dat, byteen, temp.{child.identifier});
+            ra(idx).{child.identifier} <= temp.{child.identifier};"""
+    ),
+    RegisterArray = dedent("""
+        when {child.name}_BASEADDR to {child.name}_LASTADDR =>
+            UPDATE_{child.name}(dat, byteen, offs-{child.name}_BASEADDR, ra(idx).{child.identifier}, success);
+            ra(idx).{child.identifier} <= temp.{child.identifier};"""
+    )
+)
+_regarray_read = _FunctionBodyRecordHelper(
+    Register = "when {child.name}_ADDR => dat := {child.name}_TO_DAT(ra(idx).{child.identifier});",
+    RegisterArray = dedent("""
+        when {child.name}_BASEADDR to {child.name}_LASTADDR =>
+            READ_{child.name}(offs-{child.name}_BASEADDR, ra(idx).{child.identifier}, dat, success);"""
+    ),
+    skipontrue = 'writeOnly'
+)
+
 class GenerateFunctionBodies(Visitor):
     """Print function bodies for the package body."""
     
@@ -426,141 +552,37 @@ class GenerateFunctionBodies(Visitor):
         
         self.print(commentblock('Accessor Functions'))
         self.visitchildren(node)
-        self.printf('---- Complete Register File ----', name=node.name)
-        
-        self._regfileupdate(node, False)
-        self._regfileupdate(node, True)
-        self._regfileread(node)
-    
-    @staticmethod
-    def _fnclass(sig):
-        """UPDATE or UPDATESIG_"""
-        if sig:
-            return {'fn' : 'UPDATESIG', 'class' : 'signal'}
-        else:
-            return {'fn' : 'UPDATE', 'class' : 'variable'}
-    
-    def _updatewhenlines(self, node, base, offset, sig):
-        """Text block of lines to go in an UPDATE_ function case block.
-        
-        Readable addresses set dat correctly, otherwise clear success.
-        
-        base is 'reg' or 'ra(idx)'
-        offset is 'offset' or 'offs'
-        sig is True for UPDATESIG_ and False for UPDATE_
-        """
-        
-        params = self._fnclass(sig)
-        params['base'] = base
-        params['offset'] = offset
-        
-        whenlines = []
-        gaps = False
-        for obj, _, _ in node.space:
-            # Is this a thing we can't write to?
-            if (not obj) or obj.readOnly:
-                gaps = True
-                continue
-                
-            # Create a line of how to write to this thing, cook in the
-            # formatting, and hold onto it for a bit.
-            if isinstance(obj, xml_parser.Register):
-                line = "when {name}_ADDR => {fn}_{name}(dat, byteen, {base}.{identifier});"
-                    
-            elif isinstance(obj, xml_parser.RegisterArray):
-                line = (
-                    "when {name}_BASEADDR to {name}_LASTADDR => "
-                    "{fn}_{name}(dat, byteen, {offset}-{name}_BASEADDR, {base}.{identifier}, success);"
-                )
-                
-            else:
-                raise ValueError('Child node {}: {} of Component {}'.format(
-                    type(obj).__name__, obj.name, node.name
-                ))
-                
-            whenlines.append(dedent(line).format(
-                name=obj.name, identifier=obj.identifier, **params)
-            )
-            
-        # Put an others line on if the case wasn't filled.
-        if gaps:
-            whenlines.append("when others => success := false;")
-            
-        # Indent all those lines and slam them together into a multi-line block.
-        return '\n'.join('        ' + w for w in whenlines)
-    
-    def _readwhenlines(self, node, base, offset):
-        """Text block of lines to go in a READ function case block.
-        
-        Readable addresses set dat correctly, otherwise clear success.
-        
-        base is 'reg' or 'ra(idx)'
-        offset is 'offset' or 'offs'
-        """
-        
-        whenlines = []
-        gaps = False
-        for obj, _, _ in node.space:
-            # Is this a thing we can't read from?
-            if (not obj) or obj.writeOnly:
-                gaps = True
-                continue
-                
-            # Create a line of how to read from this thing, cook in the
-            # formatting, and hold onto it for a bit.
-            if isinstance(obj, xml_parser.Register):
-                line = "when {name}_ADDR => dat := {name}_TO_DAT({base}.{identifier});"
-                    
-            elif isinstance(obj, xml_parser.RegisterArray):
-                line = (
-                    "when {name}_BASEADDR to {name}_LASTADDR => "
-                    "READ_{name}({offset}-{name}_BASEADDR, {base}.{identifier}, dat, success);"
-                )
-                
-            else:
-                raise ValueError('Child node {}: {} of {}: {}'.format(
-                    type(obj).__name__, obj.name, type(self).__name__, node.name
-                ))
-                
-            whenlines.append(
-                dedent(line).format(
-                    name=obj.name, identifier=obj.identifier,
-                    base=base, offset=offset
-            ))
-            
-        # Put an others line on if the case wasn't filled.
-        if gaps:
-            whenlines.append("when others => success := false;")
-            
-        # Indent all those lines and slam them together into a multi-line block.
-        return '\n'.join('        ' + w for w in whenlines)
-        
-    def _regfileupdate(self, node, sig):
-        """Print either UPDATE_ or UPDATESIG_ for the whole register file"""
-        
-        params = self._fnclass(sig)
-        whenlines = self._updatewhenlines(node, 'reg', 'offset', sig)
         self.printf(dedent("""
-            procedure {fn}_REGFILE(
+            ---- Complete Register File ----
+            
+            procedure UPDATE_REGFILE(
                 dat: in t_busdata; byteen : in std_logic_vector;
                 offset: in t_addr;
-                {class} reg: inout t_{name}_regfile;
+                variable reg: inout t_{name}_regfile;
                 success: out boolean
             ) is
             begin
                 success := true;
                 case offset is
-            {whenlines}
+            {updatelines}
                 end case;
-            end procedure {fn}_REGFILE;
-            """), name=node.name, whenlines=whenlines, **params
-        )
-        
-    def _regfileread(self, node):
-        """Print READ_ for the whole register file."""
-        
-        whenlines = self._readwhenlines(node, 'reg', 'offset')
-        self.printf(dedent("""
+            end procedure UPDATE_REGFILE;
+            
+            procedure UPDATESIG_REGFILE(
+                dat: in t_busdata; byteen : in std_logic_vector;
+                offset: in t_addr;
+                signal reg: inout t_{name}_regfile;
+                success: out boolean
+            ) is
+                variable varcopy : t_{name}_regfile;
+            begin
+                success := true;
+                varcopy := reg;
+                case offset is
+            {updatesiglines}
+                end case;
+            end procedure UPDATESIG_REGFILE;
+            
             procedure READ_REGFILE(
                 offset: in t_addr;
                 reg: in t_{name}_regfile;
@@ -571,80 +593,180 @@ class GenerateFunctionBodies(Visitor):
                 success := true;
                 dat := (others => 'X');
                 case offset is
-            {whenlines}
+            {readlines}
                 end case;
             end procedure READ_REGFILE;
-            """), name=node.name, whenlines = whenlines
+            """),
+            name = node.name,
+            updatelines = _component_update(node),
+            updatesiglines = _component_updatesig(node),
+            readlines = _component_read(node),
         )
-        
+
     def visit_RegisterArray(self, node):
         """Register array access function bodies."""
 
         self.visitchildren(node)
         self.printf('---- {name} ----', name=node.name)
-        if len(node.space) == 1: 
-            self._simpleregarrayupdate(node, False)
-            self._simpleregarrayupdate(node, True)
-            self._simpleregarrayread(node)
+        if len(node.space) == 1:
+            child = next(child for child, _, _ in node.space.items())
+            if node.readOnly or child.readOnly:
+                self.printf(dedent("""
+                    procedure UPDATE_{name}(
+                        dat: in t_busdata; byteen : in std_logic_vector;
+                        offset: in t_addr;
+                        variable ra: inout ta_{name};
+                        success: out boolean
+                    ) is
+                    begin
+                        success := false;
+                    end procedure UPDATE_{name};
+                    
+                    procedure UPDATESIG_{name}(
+                        dat: in t_busdata; byteen : in std_logic_vector;
+                        offset: in t_addr;
+                        signal ra: inout ta_{name};
+                        success: out boolean
+                    ) is
+                    begin
+                        success := false;
+                    end procedure UPDATESIG_{name};
+                    """), name = node.name
+                )
+            else:
+                self.printf(dedent("""
+                    procedure UPDATE_{name}(
+                        dat: in t_busdata; byteen : in std_logic_vector;
+                        offset: in t_addr;
+                        variable ra: inout ta_{name};
+                        success: out boolean
+                    ) is
+                        variable idx : integer range ta_{name}'range;
+                    begin
+                        idx := offset / {name}_FRAMESIZE;
+                        UPDATE_{child}(dat, byteen, ra(idx));
+                        success := true;
+                    end procedure UPDATE_{name};
+                    
+                    procedure UPDATESIG_{name}(
+                        dat: in t_busdata; byteen : in std_logic_vector;
+                        offset: in t_addr;
+                        signal ra: inout ta_{name};
+                        success: out boolean
+                    ) is
+                        variable idx : integer range ta_{name}'range;
+                        variable temp : t_{child};
+                    begin
+                        idx := offset / {name}_FRAMESIZE;
+                        temp := ra(idx);
+                        UPDATE_{child}(dat, byteen, temp);
+                        ra(idx) <= temp;
+                        success := true;
+                    end procedure UPDATESIG_{name};
+                    """), name = node.name, child = child.name
+                )
+                
+            if node.writeOnly or child.writeOnly:
+                self.printf(dedent("""
+                    procedure READ_{name}(
+                        offset: in t_addr;
+                        ra: in ta_{name};
+                        dat: out t_busdata;
+                        success: out boolean
+                    ) is
+                    begin
+                        dat := (others => 'X');
+                        success := false;
+                    end procedure READ_{name};
+                    """), name = node.name
+                )
+            else:
+                self.printf(dedent("""
+                    procedure READ_{name}(
+                        offset: in t_addr;
+                        ra: in ta_{name};
+                        dat: out t_busdata;
+                        success: out boolean
+                    ) is
+                        variable idx : integer range ta_{name}'range;
+                    begin
+                        idx := offset / {name}_FRAMESIZE;
+                        dat := {child}_TO_DAT(ra(idx));
+                        success := true;
+                    end procedure READ_{name};
+                    """), name = node.name, child = child.name
+                )
+                
         else:
-            self._complexregarrayupdate(node, False)
-            self._complexregarrayupdate(node, True)
-            self._complexregarrayread(node)
+            self.printf(dedent("""
+                procedure UPDATE_{name}(
+                    dat: in t_busdata; byteen : in std_logic_vector;
+                    offset: in t_addr;
+                    variable ra: inout ta_{name};
+                    success: out boolean
+                ) is
+                    variable idx: integer range 0 to {name}_FRAMECOUNT-1;
+                    variable offs: integer range 0 to {name}_FRAMESIZE-1;
+                begin
+                    idx := offset / {name}_FRAMESIZE;
+                    offs := offset mod {name}_FRAMESIZE;
+                    success := true;
+                    case offs is
+                {updatelines}
+                    end case;
+                end procedure UPDATE_{name};
+                
+                procedure UPDATESIG_{name}(
+                    dat: in t_busdata; byteen : in std_logic_vector;
+                    offset: in t_addr;
+                    signal ra: inout ta_{name};
+                    success: out boolean
+                ) is
+                    variable idx: integer range 0 to {name}_FRAMECOUNT-1;
+                    variable offs: integer range 0 to {name}_FRAMESIZE-1;
+                    variable temp: tb_{name};
+                begin
+                    idx := offset / {name}_FRAMESIZE;
+                    temp := ra(idx);
+                    offs := offset mod {name}_FRAMESIZE;
+                    success := true;
+                    case offs is
+                {updatesiglines}
+                    end case;
+                end procedure UPDATESIG_{name};
+                
+                procedure READ_{name}(
+                    offset: in t_addr;
+                    ra: in ta_{name};
+                    dat: out t_busdata;
+                    success: out boolean
+                ) is
+                    variable idx: integer range 0 to {name}_FRAMECOUNT-1;
+                    variable offs: integer range 0 to {name}_FRAMESIZE-1;
+                begin
+                    idx := offset / {name}_FRAMESIZE;
+                    offs := offset mod {name}_FRAMESIZE;
+                    success := true;
+                    dat := (others => 'X');
+                    case offs is
+                {readlines}
+                    end case;
+                end procedure READ_{name};
+                """),
+                name = node.name,
+                updatelines = _regarray_update(node),
+                updatesiglines = _regarray_updatesig(node),
+                readlines = _regarray_read(node),
+            )
             
-    def _complexregarrayupdate(self, node, sig):
-        """Generate either UPDATE_ or UPDATESIG_ for a hetrogynous RegisterArray"""
-        
-        params = self._fnclass(sig)
-        whenlines = self._updatewhenlines(node, 'ra(idx)', 'offs', sig)
-        self.printf(dedent("""
-            procedure {fn}_{name}(
-                dat: in t_busdata; byteen : in std_logic_vector;
-                offset: in t_addr;
-                {class} ra: inout ta_{name};
-                success: out boolean
-            ) is
-                variable idx: integer range 0 to {name}_FRAMECOUNT-1;
-                variable offs: integer range 0 to {name}_FRAMESIZE-1;
-            begin
-                idx := offset / {name}_FRAMESIZE;
-                offs := offset mod {name}_FRAMESIZE;
-                success := true;
-                case offs is
-            {whenlines}
-                end case;
-            end procedure {fn}_{name};
-            """), name=node.name, whenlines=whenlines, **params
-        )
-        
-    def _complexregarrayread(self, node):
-        """Generate a READ procedure for a hetrogynous RegisterArray."""
-        
-        whenlines = self._readwhenlines(node, 'ra(idx)', 'offs')
-        self.printf(dedent("""
-            procedure READ_{name}(
-                offset: in t_addr;
-                ra: in ta_{name};
-                dat: out t_busdata;
-                success: out boolean
-            ) is
-                variable idx: integer range 0 to {name}_FRAMECOUNT-1;
-                variable offs: integer range 0 to {name}_FRAMESIZE-1;
-            begin
-                idx := offset / {name}_FRAMESIZE;
-                offs := offset mod {name}_FRAMESIZE;
-                success := true;
-                dat := (others => 'X');
-                case offs is
-            {whenlines}
-                end case;
-            end procedure READ_{name};
-            """), name=node.name, whenlines = whenlines
-        )
-        
     def _simpleregarrayupdate(self, node, sig):
         """Print either UPDATE_ or UPDATESIG_ for a homogynous RegisterArray"""
         
-        params = self._fnclass(sig)
+        if sig:
+            params = {'class' : 'signal', 'fn' : 'UPDATESIG'}
+        else:
+            params = {'class' : 'variable', 'fn' : 'UPDATE'}
+        
         child, _, _ = next(node.space.items())
         if child.readOnly:
             filling = ['success := false;']
