@@ -1,0 +1,43 @@
+---- Complete Register File ----
+
+procedure UPDATE_REGFILE(
+	dat: in t_busdata; byteen : in std_logic_vector;
+	offset: in t_addr;
+	variable reg: inout t_{name}_regfile;
+	success: out boolean
+) is
+begin
+	success := true;
+	case offset is
+{updatelines}
+	end case;
+end procedure UPDATE_REGFILE;
+
+procedure UPDATESIG_REGFILE(
+	dat: in t_busdata; byteen : in std_logic_vector;
+	offset: in t_addr;
+	signal reg: inout t_{name}_regfile;
+	success: out boolean
+) is
+	variable varcopy : t_{name}_regfile;
+begin
+	success := true;
+	varcopy := reg;
+	case offset is
+{updatesiglines}
+	end case;
+end procedure UPDATESIG_REGFILE;
+
+procedure READ_REGFILE(
+	offset: in t_addr;
+	reg: in t_{name}_regfile;
+	dat: out t_busdata;
+	success: out boolean
+) is
+begin
+	success := true;
+	dat := (others => 'X');
+	case offset is
+{readlines}
+	end case;
+end procedure READ_REGFILE;

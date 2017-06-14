@@ -70,6 +70,28 @@ def commentblock(text):
         cbar
     )
 
+class _TemplateLoader:
+    """Convenience tool for text resources available at a certain path.
+    
+    Caches resources once they've been loaded.
+    """
+    
+    def __init__(self, path):
+        if not path.endswith('/'):
+            path = path + '/'
+        self._path = path
+        self._templates = {}
+        
+    def __getitem__(self, key):
+        try:
+            return self._templates[key]
+        except KeyError:
+            data = resource_text(self._path + key).expandtabs(4)
+            self._templates[key] = data
+            return data
+            
+template = _TemplateLoader('resource/vhdl.basic')
+
 #######################################################################
 # Helper visitors
 #######################################################################
@@ -97,44 +119,7 @@ class FixReservedWords(Visitor):
     word_chars = letters | set('0123456789_')
     
     # Again from the 2008 LRM, §15.10.
-    reserved_words = set("""
-        abs fairness nand select
-        access file new sequence
-        after for next severity
-        alias force nor signal
-        all function not shared
-        and null sla
-        architecture generate sll
-        array generic of sra
-        assert group on srl
-        assume guarded open strong
-        assume_guarantee or subtype
-        attribute if others
-        impure out then
-        begin in to
-        block inertial package transport
-        body inout parameter type
-        buffer is port
-        bus postponed unaffected
-        label procedure units
-        case library process until
-        component linkage property use
-        configuration literal protected
-        constant loop pure variable
-        context vmode
-        cover map range vprop
-        mod record vunit
-        default register
-        disconnect reject wait
-        downto release when
-        rem while
-        else report with
-        elsif restrict
-        end restrict_guarantee xnor
-        entity return xor
-        exit rol
-        ror""".split()
-    )
+    reserved_words = set(resource_text('resource/vhdl.basic/reservedwords').split())
     
     def invalidvhdl(self, name):
         """Return None if name is valid VHDL, otherwise a new name that is."""
@@ -345,59 +330,15 @@ class GenerateFunctionDeclarations(Visitor):
     def visit_Component(self, node):
         self.print(commentblock('Accessor Functions'))
         self.visitchildren(node)
-        self.printf(dedent("""
-            procedure UPDATE_REGFILE(
-                dat: in t_busdata; byteen : in std_logic_vector;
-                offset: in t_addr;
-                variable reg: inout t_{name}_regfile;
-                success: out boolean);
-            procedure UPDATESIG_REGFILE(
-                dat: in t_busdata; byteen : in std_logic_vector;
-                offset: in t_addr;
-                signal reg: inout t_{name}_regfile;
-                success: out boolean);
-            procedure READ_REGFILE(
-                offset: in t_addr;
-                reg: in t_{name}_regfile;
-                dat: out t_busdata;
-                success: out boolean);
-            """), name=node.name
-        )
+        self.printf(template['fndecl_component'], name=node.name)
             
     def visit_RegisterArray(self, node):
-        self.printf(dedent("""
-            procedure UPDATE_{name}(
-                dat: in t_busdata; byteen : in std_logic_vector;
-                offset: in t_addr;
-                variable ra: inout ta_{name};
-                success: out boolean);
-            procedure UPDATESIG_{name}(
-                dat: in t_busdata; byteen : in std_logic_vector;
-                offset: in t_addr;
-                signal ra: inout ta_{name};
-                success: out boolean);
-            procedure READ_{name}(
-                offset: in t_addr;
-                ra: in ta_{name};
-                dat: out t_busdata;
-                success: out boolean);
-            """), name=node.name
-        )
+        self.printf(template['fndecl_registerarray'], name=node.name)
         self.visitchildren(node)
     
     def visit_Register(self, node):
         # Register access functions
-        self.printf(dedent("""
-            function DAT_TO_{name}(dat: t_busdata) return t_{name};
-            function {name}_TO_DAT(reg: t_{name}) return t_busdata;
-            procedure UPDATE_{name}(
-                dat: in t_busdata; byteen: in std_logic_vector;
-                variable reg: inout t_{name});
-            procedure UPDATESIG_{name}(
-                dat: in t_busdata; byteen: in std_logic_vector;
-                signal reg: inout t_{name});
-            """), name=node.name
-        )
+        self.printf(template['fndecl_register'], name=node.name)
         
 class _FunctionBodyRecordHelper:
     """
@@ -506,7 +447,6 @@ _regarray_update = _FunctionBodyRecordHelper(
 _regarray_updatesig = _FunctionBodyRecordHelper(
     Register = dedent("""
         when {child.name}_ADDR =>
-            temp := ra(idx);
             UPDATE_{child.name}(dat, byteen, temp.{child.identifier});
             ra(idx).{child.identifier} <= temp.{child.identifier};"""
     ),
@@ -533,70 +473,12 @@ class GenerateFunctionBodies(Visitor):
         
         self.print(commentblock('Address Grabbers'))
         maxaddr = (node.size * node.width // 8) - 1
-        high = maxaddr.bit_length() - 1;
-        self.printf(dedent("""
-            function GET_ADDR(address: std_logic_vector) return t_addr is
-                variable normal : std_logic_vector(address'length-1 downto 0);
-            begin
-                normal := address;
-                return TO_INTEGER(UNSIGNED(normal({high} downto 0)));
-            end function GET_ADDR;
-            
-            function GET_ADDR(address: unsigned) return t_addr is
-            begin
-                return TO_INTEGER(address({high} downto 0));
-            end function GET_ADDR;
-            
-            """), high=high
-        )
+        self.printf(template['fnbody_address'], high=maxaddr.bit_length()-1)
         
         self.print(commentblock('Accessor Functions'))
         self.visitchildren(node)
-        self.printf(dedent("""
-            ---- Complete Register File ----
-            
-            procedure UPDATE_REGFILE(
-                dat: in t_busdata; byteen : in std_logic_vector;
-                offset: in t_addr;
-                variable reg: inout t_{name}_regfile;
-                success: out boolean
-            ) is
-            begin
-                success := true;
-                case offset is
-            {updatelines}
-                end case;
-            end procedure UPDATE_REGFILE;
-            
-            procedure UPDATESIG_REGFILE(
-                dat: in t_busdata; byteen : in std_logic_vector;
-                offset: in t_addr;
-                signal reg: inout t_{name}_regfile;
-                success: out boolean
-            ) is
-                variable varcopy : t_{name}_regfile;
-            begin
-                success := true;
-                varcopy := reg;
-                case offset is
-            {updatesiglines}
-                end case;
-            end procedure UPDATESIG_REGFILE;
-            
-            procedure READ_REGFILE(
-                offset: in t_addr;
-                reg: in t_{name}_regfile;
-                dat: out t_busdata;
-                success: out boolean
-            ) is
-            begin
-                success := true;
-                dat := (others => 'X');
-                case offset is
-            {readlines}
-                end case;
-            end procedure READ_REGFILE;
-            """),
+        
+        self.printf(template['fnbody_component'],
             name = node.name,
             updatelines = _component_update(node),
             updatesiglines = _component_updatesig(node),
@@ -611,219 +493,25 @@ class GenerateFunctionBodies(Visitor):
         if len(node.space) == 1:
             child = next(child for child, _, _ in node.space.items())
             if node.readOnly or child.readOnly:
-                self.printf(dedent("""
-                    procedure UPDATE_{name}(
-                        dat: in t_busdata; byteen : in std_logic_vector;
-                        offset: in t_addr;
-                        variable ra: inout ta_{name};
-                        success: out boolean
-                    ) is
-                    begin
-                        success := false;
-                    end procedure UPDATE_{name};
-                    
-                    procedure UPDATESIG_{name}(
-                        dat: in t_busdata; byteen : in std_logic_vector;
-                        offset: in t_addr;
-                        signal ra: inout ta_{name};
-                        success: out boolean
-                    ) is
-                    begin
-                        success := false;
-                    end procedure UPDATESIG_{name};
-                    """), name = node.name
-                )
+                t = template['fnbody_registerarray_simple_ro']
             else:
-                self.printf(dedent("""
-                    procedure UPDATE_{name}(
-                        dat: in t_busdata; byteen : in std_logic_vector;
-                        offset: in t_addr;
-                        variable ra: inout ta_{name};
-                        success: out boolean
-                    ) is
-                        variable idx : integer range ta_{name}'range;
-                    begin
-                        idx := offset / {name}_FRAMESIZE;
-                        UPDATE_{child}(dat, byteen, ra(idx));
-                        success := true;
-                    end procedure UPDATE_{name};
-                    
-                    procedure UPDATESIG_{name}(
-                        dat: in t_busdata; byteen : in std_logic_vector;
-                        offset: in t_addr;
-                        signal ra: inout ta_{name};
-                        success: out boolean
-                    ) is
-                        variable idx : integer range ta_{name}'range;
-                        variable temp : t_{child};
-                    begin
-                        idx := offset / {name}_FRAMESIZE;
-                        temp := ra(idx);
-                        UPDATE_{child}(dat, byteen, temp);
-                        ra(idx) <= temp;
-                        success := true;
-                    end procedure UPDATESIG_{name};
-                    """), name = node.name, child = child.name
-                )
+                t = template['fnbody_registerarray_simple_write']
+            self.printf(t, name = node.name, child = child.name)
                 
             if node.writeOnly or child.writeOnly:
-                self.printf(dedent("""
-                    procedure READ_{name}(
-                        offset: in t_addr;
-                        ra: in ta_{name};
-                        dat: out t_busdata;
-                        success: out boolean
-                    ) is
-                    begin
-                        dat := (others => 'X');
-                        success := false;
-                    end procedure READ_{name};
-                    """), name = node.name
-                )
+                t = template['fnbody_registerarray_simple_wo']
             else:
-                self.printf(dedent("""
-                    procedure READ_{name}(
-                        offset: in t_addr;
-                        ra: in ta_{name};
-                        dat: out t_busdata;
-                        success: out boolean
-                    ) is
-                        variable idx : integer range ta_{name}'range;
-                    begin
-                        idx := offset / {name}_FRAMESIZE;
-                        dat := {child}_TO_DAT(ra(idx));
-                        success := true;
-                    end procedure READ_{name};
-                    """), name = node.name, child = child.name
-                )
+                t = template['fnbody_registerarray_simple_read']
+            self.printf(t, name = node.name, child = child.name)
                 
         else:
-            self.printf(dedent("""
-                procedure UPDATE_{name}(
-                    dat: in t_busdata; byteen : in std_logic_vector;
-                    offset: in t_addr;
-                    variable ra: inout ta_{name};
-                    success: out boolean
-                ) is
-                    variable idx: integer range 0 to {name}_FRAMECOUNT-1;
-                    variable offs: integer range 0 to {name}_FRAMESIZE-1;
-                begin
-                    idx := offset / {name}_FRAMESIZE;
-                    offs := offset mod {name}_FRAMESIZE;
-                    success := true;
-                    case offs is
-                {updatelines}
-                    end case;
-                end procedure UPDATE_{name};
-                
-                procedure UPDATESIG_{name}(
-                    dat: in t_busdata; byteen : in std_logic_vector;
-                    offset: in t_addr;
-                    signal ra: inout ta_{name};
-                    success: out boolean
-                ) is
-                    variable idx: integer range 0 to {name}_FRAMECOUNT-1;
-                    variable offs: integer range 0 to {name}_FRAMESIZE-1;
-                    variable temp: tb_{name};
-                begin
-                    idx := offset / {name}_FRAMESIZE;
-                    temp := ra(idx);
-                    offs := offset mod {name}_FRAMESIZE;
-                    success := true;
-                    case offs is
-                {updatesiglines}
-                    end case;
-                end procedure UPDATESIG_{name};
-                
-                procedure READ_{name}(
-                    offset: in t_addr;
-                    ra: in ta_{name};
-                    dat: out t_busdata;
-                    success: out boolean
-                ) is
-                    variable idx: integer range 0 to {name}_FRAMECOUNT-1;
-                    variable offs: integer range 0 to {name}_FRAMESIZE-1;
-                begin
-                    idx := offset / {name}_FRAMESIZE;
-                    offs := offset mod {name}_FRAMESIZE;
-                    success := true;
-                    dat := (others => 'X');
-                    case offs is
-                {readlines}
-                    end case;
-                end procedure READ_{name};
-                """),
+            self.printf(template['fnbody_registerarray_complex'],
                 name = node.name,
                 updatelines = _regarray_update(node),
                 updatesiglines = _regarray_updatesig(node),
                 readlines = _regarray_read(node),
             )
             
-    def _simpleregarrayupdate(self, node, sig):
-        """Print either UPDATE_ or UPDATESIG_ for a homogynous RegisterArray"""
-        
-        if sig:
-            params = {'class' : 'signal', 'fn' : 'UPDATESIG'}
-        else:
-            params = {'class' : 'variable', 'fn' : 'UPDATE'}
-        
-        child, _, _ = next(node.space.items())
-        if child.readOnly:
-            filling = ['success := false;']
-        else:
-            filling = [
-                'idx := offset / {name}_FRAMESIZE;',
-                'success := true;',
-                '{fn}_{child}(dat, byteen, ra(idx));'
-            ]
-        filling = '\n'.join('    ' + line for line in filling)
-        
-        text = (
-            dedent("""
-                procedure {fn}_{name}(
-                    dat: in t_busdata; byteen : in std_logic_vector;
-                    offset: in t_addr;
-                    {class} ra: inout ta_{name};
-                    success: out boolean
-                ) is
-                    variable idx: integer range 0 to {name}_FRAMECOUNT-1;
-                begin""") +
-            '\n' + filling + '\n' + 
-            'end procedure {fn}_{name};\n'
-        )
-        self.printf(text, name=node.name, child=child.name,  **params)
-        
-    def _simpleregarrayread(self, node):
-        """Print the READ_ code for a homogynous RegisterArray"""
-        
-        child, _, _ = next(node.space.items())
-        if child.writeOnly:
-            filling = [
-                "dat := (others => 'X')",
-                'success := false;'
-            ]
-        else:
-            filling = [
-                'idx := offset / {name}_FRAMESIZE;',
-                'success := true;',
-                'dat := {child}_TO_DAT(ra(idx));'
-            ]
-        filling = '\n'.join('    ' + line for line in filling)
-        text = (
-            dedent("""
-                procedure READ_{name}(
-                    offset: in t_addr;
-                    ra: in ta_{name};
-                    dat: out t_busdata;
-                    success: out boolean
-                ) is
-                    variable idx: integer range 0 to {name}_FRAMECOUNT-1;
-                begin""") + 
-                '\n' + filling + '\n' + 
-                'end procedure READ_{name};\n'
-        )
-        self.printf(text, name=node.name, child=child.name)
-        
     def visit_Register(self, node):
         """Print register access function bodies."""
         
@@ -987,18 +675,6 @@ class basic(Visitor):
     extension = '.vhd'
     encoding = 'iso-8859-1'
     
-    component_fileheader = dedent("""
-    {name} Register Map
-    
-    Defines the registers in the {name} component.
-    
-    {desc}{changes}
-    
-    Generated automatically from {source} on {time:%d %b %Y %H:%M}
-    
-    Do not modify this file directly.  See README.rst for details.
-    """)
-    
     use_packages = [
         'ieee.std_logic_1164.all',
         'ieee.numeric_std.all'
@@ -1035,7 +711,7 @@ class basic(Visitor):
         # Comments, libraries, and boilerplate.
         self.pkgname = 'pkg_' + node.name
         self.print(commentblock(
-            self.component_fileheader.format(
+            template['header_component'].format(
                 name = node.name,
                 desc = '\n\n'.join(node.description),
                 source = node.sourcefile,

@@ -1,0 +1,11 @@
+function GET_ADDR(address: std_logic_vector) return t_addr is
+	variable normal : std_logic_vector(address'length-1 downto 0);
+begin
+	normal := address;
+	return TO_INTEGER(UNSIGNED(normal({high} downto 0)));
+end function GET_ADDR;
+
+function GET_ADDR(address: unsigned) return t_addr is
+begin
+	return TO_INTEGER(address({high} downto 0));
+end function GET_ADDR;

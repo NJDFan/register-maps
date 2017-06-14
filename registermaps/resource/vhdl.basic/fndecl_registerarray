@@ -1,0 +1,15 @@
+procedure UPDATE_{name}(
+	dat: in t_busdata; byteen : in std_logic_vector;
+	offset: in t_addr;
+	variable ra: inout ta_{name};
+	success: out boolean);
+procedure UPDATESIG_{name}(
+	dat: in t_busdata; byteen : in std_logic_vector;
+	offset: in t_addr;
+	signal ra: inout ta_{name};
+	success: out boolean);
+procedure READ_{name}(
+	offset: in t_addr;
+	ra: in ta_{name};
+	dat: out t_busdata;
+	success: out boolean);

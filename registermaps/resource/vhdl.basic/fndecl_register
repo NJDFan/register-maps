@@ -1,0 +1,8 @@
+function DAT_TO_{name}(dat: t_busdata) return t_{name};
+function {name}_TO_DAT(reg: t_{name}) return t_busdata;
+procedure UPDATE_{name}(
+	dat: in t_busdata; byteen: in std_logic_vector;
+	variable reg: inout t_{name});
+procedure UPDATESIG_{name}(
+	dat: in t_busdata; byteen: in std_logic_vector;
+	signal reg: inout t_{name});

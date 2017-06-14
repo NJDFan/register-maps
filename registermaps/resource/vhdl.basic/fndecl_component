@@ -1,0 +1,15 @@
+procedure UPDATE_REGFILE(
+	dat: in t_busdata; byteen : in std_logic_vector;
+	offset: in t_addr;
+	variable reg: inout t_{name}_regfile;
+	success: out boolean);
+procedure UPDATESIG_REGFILE(
+	dat: in t_busdata; byteen : in std_logic_vector;
+	offset: in t_addr;
+	signal reg: inout t_{name}_regfile;
+	success: out boolean);
+procedure READ_REGFILE(
+	offset: in t_addr;
+	reg: in t_{name}_regfile;
+	dat: out t_busdata;
+	success: out boolean);

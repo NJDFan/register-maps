@@ -1,0 +1,36 @@
+abs fairness nand select
+access file new sequence
+after for next severity
+alias force nor signal
+all function not shared
+and null sla
+architecture generate sll
+array generic of sra
+assert group on srl
+assume guarded open strong
+assume_guarantee or subtype
+attribute if others
+impure out then
+begin in to
+block inertial package transport
+body inout parameter type
+buffer is port
+bus postponed unaffected
+label procedure units
+case library process until
+component linkage property use
+configuration literal protected
+constant loop pure variable
+context vmode
+cover map range vprop
+mod record vunit
+default register
+disconnect reject wait
+downto release when
+rem while
+else report with
+elsif restrict
+end restrict_guarantee xnor
+entity return xor
+exit rol
+ror
