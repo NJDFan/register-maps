@@ -1,6 +1,13 @@
-========================
-registermaps module info
-========================
+=====================
+registermaps API info
+=====================
 
-.. automodule:: registermaps
+.. autoclass:: registermaps.visitor.Visitor
    :members:
+
+.. autoclass:: registermaps.html.basic
+   
+.. autoclass:: registermaps.vhdl.basic
+
+.. autoclass:: registermaps.text.tree
+

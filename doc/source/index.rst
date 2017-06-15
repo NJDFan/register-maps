@@ -15,7 +15,7 @@ HTML documentation, from an XML register description format.
    :caption: Contents:
 
    module
-   vhdl
+   outputs
 
 Indices and tables
 ==================

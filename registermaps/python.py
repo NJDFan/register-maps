@@ -12,6 +12,8 @@ components.
 
 import textwrap
 import datetime
+import os
+from . import resource_text, printverbose
 from .visitor import Visitor
 
 dedent = textwrap.dedent
@@ -211,6 +213,18 @@ class basic(Visitor):
         
     def visit_Instance(self, node):
         self.field_format[node] = node.extern
+        
+    @classmethod
+    def preparedir(kls, directory):
+        """Copy static files into the target directory."""
+        
+        os.makedirs(directory, exist_ok=True)
+        for fn in ('README.rst', ):
+            target = os.path.join(directory, fn)
+            printverbose(target)
+            with open(target, 'w') as f:
+                f.write(resource_text('resource/python.basic/' + fn))
+
         
 class ImportCollector(Visitor):
     """Collect imports of other local modules for a MemoryMap."""

@@ -1,9 +1,6 @@
 =================
 Basic VHDL Output
 =================
-
-:Author:    Rob Gaddi, Highland Technology
-:Date:      13-Jun-2017
     
 This output makes no assumptions about what the bus type is, and expects
 no support packages to be available.  Words below encased in <angle brackets>

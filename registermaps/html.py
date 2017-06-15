@@ -21,7 +21,7 @@ from lxml.html import tostring, Element
 from html import escape
 
 from .visitor import Visitor
-from . import resource_bytes, printverbose, ProgramGlobals
+from . import resource_text, printverbose, ProgramGlobals
 
 CLASS = E.CLASS
 FOOTER = Element('footer')
@@ -52,30 +52,22 @@ def register_format(node):
 class basic(Visitor):
     """Translate into HTML documentation.
     
-    Data members
-    ------------
-        hlev   
-            Current HTML heading level
+    Attributes
+    ----------
+        hlev (int): Current HTML heading level
+        breadcrumbs (HtmlElement): If present, an A element pointing back to a source document.
+        inst (str): If present, an instance name for a Component
+        wordwidth (int): The width (in bits) of a word in a given Component
+            
+        offset (int, str):
         
-        breadcrumbs
-            If present, an A element pointing back to a source document.
-            
-        inst
-            If present, an instance name for a Component
-            
-        wordwidth
-            The width (in bits) of a word in a given Component
-            
-        offset
             int - addresses are addresses on top of a base value
+            
             str - addresses are really offsets and should be printed with
-                the offset string as a prefix.
+            the offset string as a prefix.
             
-        address_nibbles
-            Number of hex digits to print for addresses
-            
-        title
-            Name of the document
+        address_nibbles (int): Number of hex digits to print for addresses
+        title (str): Name of the document
     
     """
     
@@ -425,10 +417,11 @@ class basic(Visitor):
         
     @classmethod
     def preparedir(kls, directory):
-        """Copy the CSS into the target directory."""
+        """Copy static files into the target directory."""
         
         os.makedirs(directory, exist_ok=True)
-        target = os.path.join(directory, 'reg.css')
-        printverbose(target)
-        with open(target, 'wb') as f:
-            f.write(resource_bytes('resource/html.basic/reg.css'))
+        for fn in ('reg.css', 'README.rst'):
+            target = os.path.join(directory, fn)
+            printverbose(target)
+            with open(target, 'w') as f:
+                f.write(resource_text('resource/html.basic/' + fn))
