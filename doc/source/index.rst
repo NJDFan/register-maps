@@ -14,8 +14,10 @@ HTML documentation, from an XML register description format.
    :maxdepth: 2
    :caption: Contents:
 
-   module
+   xml
    outputs
+   module
+   
 
 Indices and tables
 ==================
