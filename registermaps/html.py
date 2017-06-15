@@ -4,12 +4,14 @@ from os import makedirs
 import os.path
 import datetime
 from lxml.html import builder as E
-from lxml.html import tostring
+from lxml.html import tostring, Element
+from html import escape
 
 from .visitor import Visitor
 from . import resource_bytes, printverbose, ProgramGlobals
 
 CLASS = E.CLASS
+FOOTER = Element('footer')
     
 def register_format(node):
     """Returns the format (signed, unsigned, or nothing) and access
@@ -84,14 +86,16 @@ class basic(Visitor):
         
     def footer(self, node):
         """Create a standard footer block for HTML files."""
-        return E.DIV(
-            E.HR(),
+        footer = Element('footer')
+        footer.append(E.HR())
+        footer.append(
             E.P(
                 "Generated automatically from {source} at {time:%d %b %Y %H:%M}.".format(
                     source = node.sourcefile,
                     time = datetime.datetime.now()
-            ), CLASS='footer')
+            )),
         )
+        return footer
     
     def visit(self, node):
         """This hook is in to help debugging, it should be null in effect."""
@@ -107,6 +111,7 @@ class basic(Visitor):
             title = 'Base {} Register Map'.format(node.name)
         self.title = title
         
+        # Create the main content by sweeping the tree.
         bc = E.DIV(id='breadcrumbs')
         try:
             if self.breadcrumbs is not None:
@@ -116,26 +121,63 @@ class basic(Visitor):
             
         ww = node.width // 8
         an = ((node.size-1).bit_length() + 3) // 4
-        
-        stylesheet = E.LINK(
-            rel='stylesheet', type='text/css',
-            href=os.path.join(self.styledir, 'reg.css')
-        )
         with self.tempvars(wordwidth=ww, address_nibbles=an, hlev=2):
-            html = E.HTML(
-                E.HEAD(
-                    stylesheet,
-                    E.TITLE(title)
-                ),
-                E.BODY(
-                    E.H1(title),
-                    bc,
-                    *[E.P(d) for d in node.description],
-                    *self.visitchildren(node),
-                    self.footer(node)
-                ),
+            contentnode = E.DIV(
+                E.H1(title, id='title'),
+                bc,
+                *[E.P(d) for d in node.description],
+                *self.visitchildren(node),
+                self.footer(node),
+                id='content'
             )
-        return html
+        
+        # Add a table of contents sidebar.  We'll assume that everything that
+        # wants to be in the TOC is already a heading and just work from there.
+        h2list = E.UL()
+        for elem in contentnode.iter('h2', 'h3'):
+            id = escape(elem.text)
+            elem.attrib['id'] = id
+            if elem.tag == 'h2':
+                h2node = E.LI(
+                    E.A(
+                        elem.text,
+                        href='#' + id
+                    )
+                )
+                h2list.append(h2node)
+                h3list = None
+            else:
+                if h3list is None:
+                    h3list = E.UL()
+                    h2list.append(h3list)
+                h3list.append(
+                    E.LI(
+                        E.A(
+                            elem.text,
+                            href='#' + id
+                )))
+        
+        # Put it all together.
+        return E.HTML(
+            E.HEAD(
+                E.TITLE(title),
+                E.LINK(
+                    rel='stylesheet', type='text/css',
+                    href=os.path.join(self.styledir, 'reg.css')
+                )
+            ),
+            E.BODY(
+                E.DIV(
+                    E.DIV(
+                        E.P(E.A(title, href='#title')),
+                        h2list,
+                        id='sidebar'
+                    ),
+                    contentnode,
+                    id='wrapper'
+                )
+            ),
+        )
             
     def addressparagraph(self, node):
         """Return a P element for the byte address."""
@@ -321,14 +363,14 @@ class basic(Visitor):
         desc = node.description or node.binding.description
         
         if isinstance(self.base, int):
-            offset = '0x{:{}X}'.format(node.offset + self.base, self.address_nibbles)
+            offset = '0x{:0{}X}'.format(node.offset + self.base, self.address_nibbles)
         else:
-            offset = '{}+0x{:{}X}'.format(self.base, node.offset, self.address_nibbles)
+            offset = '{}+0x{:0{}X}'.format(self.base, node.offset, self.address_nibbles)
             
         return E.TR(
             E.TD(linkelement, CLASS('peripheral')),
             E.TD(offset, CLASS('paddress')),
-            E.TD(hex(node.size), CLASS('psize')),
+            E.TD('0x{:0{}X}'.format(node.size, self.address_nibbles), CLASS('psize')),
             E.TD(
                 *[E.P(d) for d in desc],
                 CLASS('pdesc')

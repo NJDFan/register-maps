@@ -12,14 +12,29 @@ Rob Gaddi, Highland Technology
 body {
     font-family: Verdana, Geneva, sans-serif;
     font-size: 1em;
-    width: 920px;
-    margin: 0 auto;
 }
 
-@media print body {
-    width: 100%;
+#wrapper {
+    width: 1000px;
 }
 
+@media screen {
+    #content {
+        margin-left: 15em;
+        padding-left: 2em;
+    }
+
+    #sidebar {
+        float: left;
+        width: 15em;
+        top: 0;
+        height: 95%;
+        margin: 1em;
+        position: fixed;
+        overflow-y: scroll;
+    }
+} 
+    
 h1 {
     color: black;
     font-size: 2em;
@@ -36,16 +51,28 @@ h3 {
     font-size: 1.25em;
 }
 
+@media print {
+    #content {
+        width: 100%;
+    }
+
+    #sidebar {
+        display: none;
+    }
+}
+
+
 /* Component/Instance specific styles. */
 
 div.register {
     border: 1px solid Gainsboro;
     margin: 2px;
-    padding: 2px;
+    padding: 0.5em;
 }
 
 div.regarray {
     border: 2px solid black;
+    padding: 0.5em;
 }
 
 table.bitfield {
@@ -107,6 +134,10 @@ table.component_list tr {
 
 table.component_list tr:nth-child(odd) {
     background-color: #eee;
+}
+
+table.component_list td {
+    padding: 0.5em;
 }
 
 td.paddress, td.psize {
