@@ -1,4 +1,17 @@
-"""Translate XML register definitions into HTML documentation."""
+"""Translate XML register definitions into HTML documentation.
+
+Generated HTML files have top level structure:
+
+HTML
+  HEAD
+  BODY
+    DIV #wrapper
+      DIV #sidebar
+      DIV #contents
+      
+Where #sidebar is a navigation table-of-contents for the document, and 
+#contents is the main data being displayed.
+"""
 
 from os import makedirs
 import os.path
@@ -297,36 +310,63 @@ class basic(Visitor):
     def visit_MemoryMap(self, node):
         """Create an HTML file for a MemoryMap."""
         self.title = title = node.name + ' Peripheral Map'
-        body = E.BODY(
-            E.H1(title),
-            *[E.P(d) for d in node.description]
-        )
-        
         an = ((node.size-1).bit_length() + 3) // 4
+        
+        # Sweep the document tree to build up the main content
         with self.tempvars(
             wordwidth=1, address_nibbles=an, base=node.base,
             subdir=node.name+'_instances', hlev=2):
-                
-            html = E.HTML(
-                E.HEAD(
-                    E.LINK(rel="stylesheet", href="reg.css", type="text/css"),
-                    E.TITLE(title)
-                ),
-                E.BODY(
-                    E.H1(title),
-                    *[E.P(d) for d in node.description],
-                    E.HR(),
-                    E.TABLE(
-                        E.TR(
-                            E.TH('Peripheral'), E.TH('Base Address'), E.TH('Size'), E.TH('Description'),
-                            *self.visitchildren(node),
-                        ),
-                        CLASS('component_list')
+            
+            contentnode = E.DIV(
+                E.H1(title, id='title'),
+                *[E.P(d) for d in node.description],
+                E.HR(),
+                E.TABLE(
+                    E.TR(
+                        E.TH('Peripheral'), E.TH('Base Address'), E.TH('Size'), E.TH('Description'),
+                        *self.visitchildren(node),
                     ),
-                    self.footer(node)
+                    CLASS('component_list')
+                ),
+                self.footer(node),
+                id='content'
+            )
+
+        # Add a table of contents sidebar for each table row.
+        instlist = E.UL()
+        for elem in contentnode.xpath("//td[contains(@class, 'peripheral')]"):
+            text = tostring(elem, method="text", encoding="unicode")
+            id = escape(text)
+            elem.attrib['id'] = id
+            node = E.LI(
+                E.A(
+                    text,
+                    href='#' + id
                 )
             )
-        return html
+            instlist.append(node)
+        
+        # And put it all together.
+        return E.HTML(
+            E.HEAD(
+                E.TITLE(title),
+                E.LINK(
+                    rel='stylesheet', type='text/css',
+                    href=os.path.join(self.styledir, 'reg.css')
+                )
+            ),
+            E.BODY(
+                E.DIV(
+                    E.DIV(
+                        E.P(E.A(title, href='#title')),
+                        instlist,
+                        id='sidebar'
+                    ),
+                    contentnode,
+                    id='wrapper'
+                )
+            ),
+        )
         
     def visit_Instance(self, node):
         """
