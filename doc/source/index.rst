@@ -16,6 +16,7 @@ HTML documentation, from an XML register description format.
 
    xml
    outputs
+   internals
    module
    
 
