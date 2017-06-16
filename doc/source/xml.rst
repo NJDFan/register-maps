@@ -5,12 +5,13 @@ XML Register Description Format
 Summary
 =======
 
-The registermap tools operate off of a Highland proprietary register description
-format.  `ipXACT <http://www.eda.org/downloads/standards/ip-xact>` was
-considered and rejected for this.  If the tools had materialized around it, the
-fact that it's deeply non-hierarchical and highly complex would have been
-tolerable.  As an XML format that someone would have to write by hand it's
-a bear.
+The registermap tools operate off of a Highland proprietary register 
+description format.  ipXACT_ was considered and rejected for this.  If the 
+tools had materialized around it, the fact that it's deeply non-hierarchical 
+and highly complex would have been tolerable.  As an XML format that someone 
+would have to write by hand it's a bear.
+
+.. _ipXACT: http://www.eda.org/downloads/standards/ip-xact
 
 So we have the HtiCompoment format, which is based on hierarchical XML which
 itself is organized into files.  Files take one of two forms (shown here streamlined)::
