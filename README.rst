@@ -10,12 +10,13 @@ Execution
 After installing the package, the main executable is a program called
 registermap.
 
-Given source XML files in ./data/src you would run::
+For instance, given source XML files in ./data/src you would run::
 
-    registermap vhdl.basic data/src --output output/vhdl
-    registermap html.basic data/src --output output/html
+    registermap data/src --format vhdl
+    registermap html.basic --format html
     
-And so on.
+That would generate VHDL functions in the output/vhdl directory, and
+HTML documentation of everything in the output/html directory.
 
 See the docs folder for more information, as well as README.rst files in each
 of the registermaps/resource/* output format folders.

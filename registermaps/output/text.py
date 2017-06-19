@@ -1,9 +1,13 @@
 """Output formatters in the text class."""
 
 import textwrap
-from .visitor import Visitor
+from ..visitor import Visitor
+from ..util import Outputs
 
+@Outputs.register
 class tree(Visitor):
+    
+    outputname = 'tree'
     extension = '.txt'
     indentper = '    '
     

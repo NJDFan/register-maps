@@ -23,8 +23,13 @@ import os.path
 import textwrap
 import datetime
 
-from . import xml_parser, resource_text, printverbose
-from .visitor import Visitor
+from .. import xml_parser
+from ..util import printverbose, Outputs
+from ..visitor import Visitor
+
+class VhdlVisitor(Visitor):
+    """All the VHDL outputs need access to the resource directory."""
+    outputname = 'vhdl'
 
 def dedent(text):
     """Unindents a triple quoted string, stripping up to 1 newline from
@@ -56,34 +61,12 @@ def commentblock(text):
     
     cbar = '-' * 80
     return '\n'.join((cbar, textwrap.indent(text.strip(), '--  ', lambda x: True), cbar))
-    
-class _TemplateLoader:
-    """Convenience tool for text resources available at a certain path.
-    
-    Caches resources once they've been loaded.
-    """
-    
-    def __init__(self, path):
-        if not path.endswith('/'):
-            path = path + '/'
-        self._path = path
-        self._templates = {}
-        
-    def __getitem__(self, key):
-        try:
-            return self._templates[key]
-        except KeyError:
-            data = resource_text(self._path + key).expandtabs(4)
-            self._templates[key] = data
-            return data
-            
-template = _TemplateLoader('resource/vhdl.basic')
 
 #######################################################################
 # Helper visitors
 #######################################################################
 
-class FixReservedWords(Visitor):
+class FixReservedWords(VhdlVisitor):
     """Modify the tree for legal VHDL.
     
     Any names that are with illegal VHDL characters will be changed.
@@ -106,7 +89,7 @@ class FixReservedWords(Visitor):
     word_chars = letters | set('0123456789_')
     
     # Again from the 2008 LRM, §15.10.
-    reserved_words = set(resource_text('resource/vhdl.basic/reservedwords').split())
+    reserved_words = set(VhdlVisitor.rt('reservedwords').split())
     
     def invalidvhdl(self, name):
         """Return None if name is valid VHDL, otherwise a new name that is."""
@@ -175,7 +158,7 @@ class FixReservedWords(Visitor):
     def visit_Enum(self, node):
         return []
 
-class GenerateAddressConstants(Visitor):
+class GenerateAddressConstants(VhdlVisitor):
     """Print address constants into the package header."""
         
     def begin(self, startnode):
@@ -210,7 +193,7 @@ class GenerateAddressConstants(Visitor):
     def printaddress(self, name, val):
         self.printf('constant {}: t_addr := {};', name, val)
 
-class GenerateTypes(Visitor):
+class GenerateTypes(VhdlVisitor):
     """Go through the HtiComponent tree generating register types.
     
     Immediately outputs:
@@ -311,21 +294,21 @@ class GenerateTypes(Visitor):
     def visit_MemoryMap(self, node):
         pass
 
-class GenerateFunctionDeclarations(Visitor):
+class GenerateFunctionDeclarations(VhdlVisitor):
     """Print function declaration statements for the package header."""
     
     def visit_Component(self, node):
         self.print(commentblock('Accessor Functions'))
         self.visitchildren(node)
-        self.printf(template['fndecl_component'], name=node.name)
+        self.printf(self.rt('fndecl_component'), name=node.name)
             
     def visit_RegisterArray(self, node):
-        self.printf(template['fndecl_registerarray'], name=node.name)
+        self.printf(self.rt('fndecl_registerarray'), name=node.name)
         self.visitchildren(node)
     
     def visit_Register(self, node):
         # Register access functions
-        self.printf(template['fndecl_register'], name=node.name)
+        self.printf(self.rt('fndecl_register'), name=node.name)
         
 class _fnbodyrecord:
     """
@@ -392,7 +375,7 @@ class _fnbodyrecord:
             ' ' * self.indent
         )
         
-class GenerateFunctionBodies(Visitor):
+class GenerateFunctionBodies(VhdlVisitor):
     """Print function bodies for the package body."""
     
     _component_update = _fnbodyrecord(
@@ -451,12 +434,12 @@ class GenerateFunctionBodies(Visitor):
         
         self.print(commentblock('Address Grabbers'))
         maxaddr = (node.size * node.width // 8) - 1
-        self.printf(template['fnbody_address'], high=maxaddr.bit_length()-1)
+        self.printf(self.rt('fnbody_address'), high=maxaddr.bit_length()-1)
         
         self.print(commentblock('Accessor Functions'))
         self.visitchildren(node)
         
-        self.printf(template['fnbody_component'],
+        self.printf(self.rt('fnbody_component'),
             name = node.name,
             updatelines = self._component_update(node),
             updatesiglines = self._component_updatesig(node),
@@ -470,19 +453,19 @@ class GenerateFunctionBodies(Visitor):
         if len(node.space) == 1:
             child = next(child for child, _, _ in node.space.items())
             if node.readOnly or child.readOnly:
-                t = template['fnbody_registerarray_simple_ro']
+                t = self.rt('fnbody_registerarray_simple_ro')
             else:
-                t = template['fnbody_registerarray_simple_write']
+                t = self.rt('fnbody_registerarray_simple_write')
             self.printf(t, name = node.name, child = child.name)
                 
             if node.writeOnly or child.writeOnly:
-                t = template['fnbody_registerarray_simple_wo']
+                t = self.rt('fnbody_registerarray_simple_wo')
             else:
-                t = template['fnbody_registerarray_simple_read']
+                t = self.rt('fnbody_registerarray_simple_read')
             self.printf(t, name = node.name, child = child.name)
                 
         else:
-            self.printf(template['fnbody_registerarray_complex'],
+            self.printf(self.rt('fnbody_registerarray_complex'),
                 name = node.name,
                 updatelines = self._regarray_update(node),
                 updatesiglines = self._regarray_updatesig(node),
@@ -492,14 +475,14 @@ class GenerateFunctionBodies(Visitor):
     def visit_Register(self, node):
         """Print register access function bodies."""
         
-        self.printf(template['fnbody_register'],
+        self.printf(self.rt('fnbody_register'),
             name=node.name,
             d2rlines = GenerateD2R().execute(node),
             r2dlines = GenerateR2D().execute(node),
             updatelines = GenerateRegUpdate().execute(node)
         )
      
-class _Indent4Visitor(Visitor):
+class _Indent4Visitor(VhdlVisitor):
     def finish(self, lastvalue):
         return textwrap.indent(lastvalue, '    ')
      
@@ -609,13 +592,15 @@ class GenerateRegUpdate(_Indent4Visitor):
 # Main visitors
 #######################################################################
 
-class basic(Visitor):
+@Outputs.register
+class Vhdl(VhdlVisitor):
     """Basic VHDL output.
     
     This output makes no assumptions about what the bus type is, and expects
     no support packages to be available.
     """
     
+    outputname = 'vhdl'
     extension = '.vhd'
     encoding = 'iso-8859-1'
     
@@ -656,7 +641,7 @@ class basic(Visitor):
         wrapper = textwrap.TextWrapper()
         
         self.pkgname = 'pkg_' + node.name
-        header = template['header_component'].format(
+        header = self.rt('header_component').format(
             name = node.name,
             desc = '\n\n'.join(wrapper.fill(d) for d in node.description),
             source = node.sourcefile,
@@ -695,13 +680,4 @@ class basic(Visitor):
         
     def visit_MemoryMap(self, node):
         pass
-    
-    @classmethod
-    def preparedir(kls, directory):
-        """Copy the README.rst file into the target directory."""
-        os.makedirs(directory, exist_ok=True)
-        target = os.path.join(directory, 'README.rst')
-        printverbose(target)
-        with open(target, 'w') as f:
-            f.write(resource_text('resource/vhdl.basic/README.rst'))
-    
+

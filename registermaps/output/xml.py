@@ -7,12 +7,13 @@ import textwrap
 from lxml.builder import E
 from lxml.etree import tostring, Comment
 
-from .visitor import Visitor
-from . import resource_text, printverbose, ProgramGlobals
+from ..visitor import Visitor
+from ..util import Outputs
 
 wrapper = textwrap.TextWrapper()
 
-class hti(Visitor):
+@Outputs.register
+class HtiXml(Visitor):
     """Generate XML output usable as XML input.
     
     This transform is not as pointless as it seems, because it locks down as
@@ -22,6 +23,7 @@ class hti(Visitor):
     customer facing, where it would be poor form to move it anymore.
     """
     
+    outputname = 'htixml'
     extension = '.xml'
     binary = True
     
@@ -57,15 +59,3 @@ class hti(Visitor):
                 xml_declaration=True, pretty_print=True,
                 encoding = 'UTF-8'
         ))
-        
-    @classmethod
-    def preparedir(kls, directory):
-        """Copy static files into the target directory."""
-        
-        os.makedirs(directory, exist_ok=True)
-        for fn in ('README.rst', ):
-            target = os.path.join(directory, fn)
-            printverbose(target)
-            with open(target, 'w') as f:
-                f.write(resource_text('resource/xml.hti/' + fn))
-
