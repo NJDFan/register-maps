@@ -30,7 +30,7 @@ Enumeration Constants
 
 Classes
 =======
-For each compoment, a Python file is written defining the component as a subclass
+For each component, a Python file is written defining the component as a subclass
 of :py:class:`ctypes.Structure`.  Fields representing gaps in the contiguous
 region will be named ``_dummy`` followed by a positional number.
 

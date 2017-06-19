@@ -13,7 +13,7 @@ registermap.
 For instance, given source XML files in ./data/src you would run::
 
     registermap data/src --format vhdl
-    registermap html.basic --format html
+    registermap data/src --format html
     
 That would generate VHDL functions in the output/vhdl directory, and
 HTML documentation of everything in the output/html directory.

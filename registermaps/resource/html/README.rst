@@ -2,8 +2,8 @@
 Basic HTML Output
 =================
 
-HTML is used to generate documentiation.  The primary output is html.basic,
-which generates HTML files for Components and MemoryMaps.
+HTML is used to generate documentation which can be opened in any
+browser.
 
 In the selected output directory, the following files will be created:
 
@@ -14,7 +14,7 @@ In the selected output directory, the following files will be created:
      and sizes.
      
    - A subdirectory for each MemoryMap, with a Component style HTML file for
-     each Instance reprenting the bound Component with a start address
+     each Instance representing the bound Component with a start address
      determined by the MemoryMap.
 
    - CSS styles for all of the HTML
