@@ -45,22 +45,22 @@ look like:
 .. code-block:: xml
     :caption: DIO.xml
 
-    <?xml version="1.0" encoding="iso-8859-1"?>
+    <?xml version="1.0" encoding="UTF-8"?>
     <component name="DIO" width="16">
         Digital I/O peripheral.  I/O port is 1 byte wide, all registers use
         bits 7-0 to control I/Os 7-0 respectively.
         
-        <register name="DRIVE" width=8>
+        <register name="DRIVE" width="8">
             <desc>Current output value of the port if it is outputting.</desc>
             <desc>The OUT register determines whether it does anything.</desc>
         </register>
         
-        <register name="READ" width=8>
+        <register name="READ" width="8">
             Current value read from the port.  This is valid whether or not
             the port is driving that value.
         </register>
         
-        <register name="OUT" width=8>
+        <register name="OUT" width="8">
             Set bits to 1 to drive from the value in DRIVE.  Clear to 0 to use
             as inputs.
         </register>
@@ -69,7 +69,7 @@ look like:
 .. code-block:: xml
     :caption: DESIGN.xml
 
-    <?xml version="1.0" encoding="iso-8859-1"?>
+    <?xml version="1.0" encoding="UTF-8"?>
     <memorymap name="DESIGN" width="16" base="0xE0000000">
         Peripheral system.
         <instance name="PORT0" extern="DIO"/>

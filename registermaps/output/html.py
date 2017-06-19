@@ -20,8 +20,8 @@ from lxml.html import builder as E
 from lxml.html import tostring, Element
 from html import escape
 
-from .visitor import Visitor
-from . import resource_text, printverbose, ProgramGlobals
+from ..visitor import Visitor
+from ..util import resource_text, printverbose, Outputs
 
 CLASS = E.CLASS
 FOOTER = Element('footer')
@@ -49,6 +49,7 @@ def register_format(node):
     else:
         return ''
 
+@Outputs.register
 class basic(Visitor):
     """Translate into HTML documentation.
     
@@ -75,6 +76,7 @@ class basic(Visitor):
     # the ability of visit_ methods to return values to pass HTML Elements back
     # up the tree.
     
+    outputname = 'html'
     binary = True
     extension = '.html'
     
@@ -419,9 +421,8 @@ class basic(Visitor):
     def preparedir(kls, directory):
         """Copy static files into the target directory."""
         
-        os.makedirs(directory, exist_ok=True)
-        for fn in ('reg.css', 'README.rst'):
-            target = os.path.join(directory, fn)
-            printverbose(target)
-            with open(target, 'w') as f:
-                f.write(resource_text('resource/html.basic/' + fn))
+        super().preparedir(directory)
+        target = os.path.join(directory, 'reg.css')
+        printverbose(target)
+        with open(target, 'wb') as f:
+            f.write(kls.rb('reg.css'))

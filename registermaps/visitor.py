@@ -11,7 +11,7 @@ from os import makedirs
 import os.path
 import contextlib
 
-from . import printverbose, ProgramGlobals
+from .util import printverbose, ProgramGlobals, resource_bytes, resource_text
 
 class Visitor:
     """An abstract Visitor for working with HtiComponent trees.
@@ -229,10 +229,24 @@ class Visitor:
 
     @classmethod
     def preparedir(kls, directory):
-        """Hook for whatever actions are necessary to prepare a target
-        directory for target files.
-        
-        Usually this will entail copying additional files over, like CSS
-        templates or README files.
-        """
         pass
+
+    @classmethod
+    def rb(self, resourcename):
+        """Get a binary resource from this resource subfolder."""
+        return resource_bytes('resource/{}/{}'.format(self.outputname, resourcename))
+
+    @classmethod
+    def rt(self, resourcename):
+        """Get a text resource from this resource subfolder."""
+        return resource_text('resource/{}/{}'.format(self.outputname, resourcename))
+
+    @classmethod
+    def preparedir(kls, directory):
+        """Copy README.rst to the target directory."""
+        
+        os.makedirs(directory, exist_ok=True)
+        target = os.path.join(directory, 'README.rst')
+        printverbose(target)
+        with open(target, 'w') as f:
+            f.write(kls.rt('README.rst'))

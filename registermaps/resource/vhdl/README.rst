@@ -13,7 +13,7 @@ words.  Check the header comments of the generated VHDL files for information
 about changed elements.
 
 Changed **names** indicate characters that were not legal VHDL, and will be
-different in all contexts, illegal characters will be repaced with _ characters.
+different in all contexts, illegal characters will be replaced with _ characters.
 
 Changed **identifiers** mean only that they cannot be bare words, which means
 they are only different in the context of something.*identifier*, such as 
@@ -94,11 +94,11 @@ selected by *byteen*, which should be 1/8 as long as dat.  Use UPDATE_REGFILE
 if the register are stored in a variable, or UPDATESIG_REGFILE if they are
 stored in a variable.  There probably aren't circumstances that warrant the 
 use of both in the same design.  In either case, *success* is set true if the
-write targetted a writeable register or false if not.
+write targeted a writeable register or false if not.
 
 READ_REG gets the data from a single register based on the address in *offset*
 and returns it in a proper format for the data bus.  *dat* is set with the data
-that has been read and *success* is set true if the read targetted a readable
+that has been read and *success* is set true if the read targeted a readable
 register or false if not.
 
 RegisterArray
@@ -138,7 +138,7 @@ Register
 --------
 
 The functions available for Registers are low-level access functions.  These
-are usable directly by users either to suppliment or entirely circumvent the
+are usable directly by users either to supplement or entirely circumvent the
 generated register decoding functions.  For each register there are subprograms:
 
 

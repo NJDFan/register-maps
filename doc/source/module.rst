@@ -5,9 +5,9 @@ registermaps API info
 .. autoclass:: registermaps.visitor.Visitor
    :members:
 
-.. autoclass:: registermaps.html.basic
+.. autoclass:: registermaps.output.html.basic
    
-.. autoclass:: registermaps.vhdl.basic
+.. autoclass:: registermaps.output.vhdl.Vhdl
 
-.. autoclass:: registermaps.text.tree
+.. autoclass:: registermaps.output.text.tree
 
