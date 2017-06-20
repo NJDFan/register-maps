@@ -1,4 +1,4 @@
 import importlib
 
 from .util import __version__
-from . import output
+from .output import html, python, text, vhdl, xml

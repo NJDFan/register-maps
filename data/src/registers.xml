@@ -11,7 +11,7 @@
         <desc> channels 0...15 realtime input </desc>  
     </register>
     
-    <register name="RDATB" offset="1" readOnly ="true" >
+    <register name="RDATB" offset="1" readOnly ="true" reset="0x100">
         <desc> channels 16...31 realtime input </desc>  
     </register>
     

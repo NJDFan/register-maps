@@ -450,10 +450,12 @@ class Register(HtiElement):
     """
     
     optional = {
+        'reset' : toint,
         'width' : toint,
         'format' : _formatvalidator
     }
     defaults = {
+        'reset' : 0,
         'width' : inherit('width'),
         'size'  : 1,
         'format' : 'bits'
@@ -464,6 +466,14 @@ class Register(HtiElement):
         # The space needs to be sized in bits rather than words.
         self.space_size = self.width * self.size
         
+    def afterchildren(self):
+        """Propagate field reset values up, just for fun."""
+        
+        if self.space:
+            self._attrib['reset'] = sum(
+                (obj.reset << start) for obj, start, size in self.space.items()
+            )
+        
 class Field(HtiElement):
     """Fields represent bit fields and contained within Registers.
     
@@ -471,6 +481,7 @@ class Field(HtiElement):
     """
 
     optional = {
+        'reset'  : str,
         'format' : _formatvalidator
     }
     defaults = {
@@ -495,6 +506,19 @@ class Field(HtiElement):
                 self._attrib['size'] = 1
             else:
                 self._attrib['size'] = (self.space.size - 1).bit_length()
+                
+        # Evaluate the reset value.
+        if self.reset is None:
+            self._attrib['reset'] = 0
+        else:
+            # Is this the name of an enumeration?
+            for obj, _, _ in self.space.items():
+                if self.reset == obj.name:
+                    self._attrib['reset'] = obj.value
+                    break
+            else:
+                # If it's not an enumeration it better be an integer.
+                self._attrib['reset'] = toint(self.reset)
             
     @property
     def width(self):

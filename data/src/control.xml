@@ -15,7 +15,7 @@
 				<field name="MODE" offset="0" size="1">
 					<desc>Set to 1 for output; 0 is input.</desc>
 				</field>
-				<field name="DEBOUNCE" offset="4" size="2">
+				<field name="DEBOUNCE" offset="4" size="2" reset="M1">
 					<desc>Controls input debounce timing.</desc>
 					<enum name="OFF" value="0"> <desc>No extra debounce.</desc></enum>
 					<enum name="M1" value="1"><desc>1 ms debounce.</desc></enum>

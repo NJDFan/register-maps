@@ -51,8 +51,8 @@
     </register>
 	<register name="DCAL" width="16" >
 		<desc> Calibration date: month/day </desc>
-		<field name="DAY" offset="0" size="8">Day (1-31)</field>
-		<field name="MONTH" offset="8" size="8">Month (1-12)</field>
+		<field name="DAY" offset="0" size="8" reset="1">Day (1-31)</field>
+		<field name="MONTH" offset="8" size="8" reset="1">Month (1-12)</field>
     </register>
 	
 	<register name="ULED" width="16" offset="12" >

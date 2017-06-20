@@ -50,7 +50,7 @@ class tree(Visitor):
         self.headline(line, node)
         
     def visit_Register(self, node):
-        line = '({}) {}'.format(node.offset, node.name)
+        line = '({}) {} (reset={})'.format(node.offset, node.name, node.reset)
         self.headline(line, node)
         
     def visit_Instance(self, node):

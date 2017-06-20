@@ -167,6 +167,7 @@ Optional attributes:
                 (default="bits")
     :offset:    word offset of the start of the register (default=auto)
     :readOnly:  register is read-only (default=inherit from parent)
+    :reset:     reset value, (default=0)
     :size:      number of words in the register.  Currently only 1 is allowed.
                 (default=1)
     :width:     number of bits in the register, if the register has no fields.
@@ -191,6 +192,7 @@ Optional attributes:
                 (default="bits")
     :offset:    bit offset of the LSB of the field (default=auto)
     :readOnly:  register is read-only (default=inherit from parent)
+    :reset:     reset value, integer or enum name (default=0)
     :size:      number of bits in the field (default=1)
     :width:     alias for *size*
     :writeOnly: register is write-only (default=inherit from parent)
