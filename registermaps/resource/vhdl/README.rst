@@ -44,6 +44,9 @@ Constants
 * ``<REGISTERARRAY>_FRAMECOUNT`` is the number of FRAMESIZE element in the array
 * ``<REGISTERARRAY>_LASTADDR`` is the offset for the last word in the array
 * ``<REGISTER>_<FIELD>_<ENUM>`` is a value for field <REGISTER>.<FIELD>
+* ``RESET_t_<REGISTER>`` is the reset value constant for a ``t_<REGISTER>``
+* ``RESET_ta_<REGISTERARRAY>`` is the reset value constant for a ``t_<REGISTERARRAY>``
+* ``RESET_t_<COMPONENT>_REGFILE`` is the reset value for a ``t_<COMPONENT>_regfile``
 
 Subprograms
 ===========

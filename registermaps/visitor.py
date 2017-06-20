@@ -159,6 +159,39 @@ class Visitor:
             type(self).__name__,
             type(node).__name__
         ))
+        
+    # A few default methods for breaking up simple versus complex make the
+    # subclasses easier.
+    
+    def visit_RegisterArray(self, node):
+        """Call visit_SimpleRegisterArray or visit_ComplexRegisterArray.
+        
+        A simple RegisterArray has only 1 child.
+        Override this when you don't want two functions.
+        """
+        
+        try:
+            if node.space.itemcount == 1:
+                return self.visit_SimpleRegisterArray(node)
+            else:
+                return self.visit_ComplexRegisterArray(node)
+        except AttributeError:
+            return self.defaultvisit(node)
+            
+    def visit_Register(self, node):
+        """Call visit_SimpleRegister or visit_ComplexRegister.
+        
+        A simple Register has no children.
+        Override this when you don't want two functions.
+        """
+        
+        try:
+            if node.space:
+                return self.visit_ComplexRegister(node)
+            else:
+                return self.visit_SimpleRegister(node)
+        except AttributeError:
+            return self.defaultvisit(node)
 
     def begin(self, startnode):
         """Things to do before we begin visiting the first node.

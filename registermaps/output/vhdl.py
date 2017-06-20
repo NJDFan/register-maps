@@ -230,50 +230,91 @@ class GenerateTypes(VhdlVisitor):
             self.printf('    {}: {};', child.identifier, self.namer(child))
         self.printf('end record t_{}_regfile;', node.name)
         
-    def visit_RegisterArray(self, node):
-        """Generate the array type and, if necessary, a subsidiary record."""
+        # And a default for it.
+        self.printf('constant RESET_t_{0}_REGFILE : t_{0}_regfile := (', node.name)
+        lines = (
+            '    {0} => RESET_{1}'.format(child.identifier, self.namer(child))
+            for child, _, _ in node.space.items()
+        )
+        self.print(',\n'.join(lines))
+        self.print(');')
         
-        # First define the register types.
+    def visit_ComplexRegisterArray(self, node):
+        """Generate the subsidary record and array type."""
+        
         self.visitchildren(node)
         
-        # Now we can define the array type.
-        fields = [
-            (child.identifier, self.namer(child))
-                for child, _, _ in node.space.items()
-        ]
-        if len(fields) == 1:
-            # Don't make a structured type from this array.
-            basename = fields[0][1]
-        else:
-            basename = 'tb_' + node.name
-            self.printf('type {} is record', basename)
-            for fn, ft in fields:
-                self.printf('    {}: {};'.format(fn, ft))
-            self.printf('end record {};', basename)
+        # Create a base record type.
+        basename = 'tb_' + node.name
+        self.printf('type {} is record', basename)
+        for obj, _, _ in node.space.items():
+            self.printf('    {}: {};'.format(obj.identifier, self.namer(obj)))
+        self.printf('end record {};', basename)
                     
+        # And the array type.
         self.printf('type {} is array({} downto 0) of {};',
             self.namer(node), node.size-1, basename
         )
-        self.print()
         
-    def visit_Register(self, node):
-        """Generate the register types and enumeration constants."""
-        if node.space:
-            # We're a complex register
-            with self.tempvars(enumlines=[], registername=node.name):
-                self.printf('type t_{name} is record', name=node.name)
-                self.visitchildren(node)
-                self.printf('end record t_{name};', name=node.name)
+        # And the default array.
+        self.printf('constant RESET_{0} : {0} := (others => (', self.namer(node))
+        lines = (
+            '    {0} => RESET_{1}'.format(child.identifier, self.namer(child))
+            for child, _, _ in node.space.items()
+        )
+        self.print(',\n'.join(lines))
+        self.print('));')
+        
+    def visit_SimpleRegisterArray(self, node):
+        """Generate the array type."""
+        
+        self.visitchildren(node)
+        child = next(obj for obj, _, _ in node.space.items())
+        
+        # Create the array type.
+        self.printf('type {} is array({} downto 0) of {};',
+            self.namer(node), node.size-1, self.namer(child)
+        )
+        
+        # And a default for it.
+        self.printf('constant RESET_{0} : {0} := (others => RESET_{1});',
+            self.namer(node), self.namer(child)
+        )
+        
+    def visit_ComplexRegister(self, node):
+        """Generate the register type and enumeration constants."""
+        
+        # Generate the record type.
+        with self.tempvars(enumlines=[], registername=node.name):
+            self.printf('type t_{name} is record', name=node.name)
+            self.visitchildren(node)
+            self.printf('end record t_{name};', name=node.name)
+        
+            for line in self.enumlines:
+                self.print(line)
+                
+        # And the reset constant.
+        self.printf('constant RESET_{0} : {0} := (',
+            self.namer(node)
+        )
+        lines = (
+            "    {} => '{}'".format(child.identifier, child.reset) if size==1 else
+            '    {} => "{:0{}b}"'.format(child.identifier, child.reset, size)
+            for child, start, size in node.space.items()
+        )
+        self.print(',\n'.join(lines))
+        self.print(');')
             
-                for line in self.enumlines:
-                    self.print(line)
-        
-        else:
-            # We're a simple register
-            self.printf('subtype t_{name} is {fmt};',
-                name=node.name,
-                fmt = register_format(node),
-            )
+    def visit_SimpleRegister(self, node):
+        """Generate the register type."""
+    
+        self.printf('subtype t_{name} is {fmt};',
+            name=node.name,
+            fmt = register_format(node),
+        )
+        self.printf('constant RESET_{0} : {0} :=  "{1:0{2}b}";',
+              self.namer(node), node.reset, node.width
+        )
                     
     def visit_Field(self, node):
         """Generate record field definitions, and gather enumeration constants."""
