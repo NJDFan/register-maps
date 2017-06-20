@@ -56,9 +56,17 @@ architecture Behavioral of {name}_axi4lite is
 	constant RESP_SLVERR	: std_logic_vector(1 downto 0) := "10";
 	constant RESP_DECERR	: std_logic_vector(1 downto 0) := "11";
 	
+	function SL(x : boolean) return std_logic is
+	begin
+		if x then return '1';
+		else return '0';
+		end if;
+	end function SL;
+	
 begin
 
-	-- Manage bus reads
+	-- Manage bus reads.  Reads support 1 in the pipeline, allowing a new
+	-- read to be accepted before the read data from the previous has been.
 	AXI_READ: process(ACLK)
 		variable addr		: t_addr;
 		variable dat		: t_busdata;
@@ -96,13 +104,8 @@ begin
 			end if;
 			
 			-- Manage the status flags.
-			if replying then RVALID <= '1';
-			else             RVALID <= '0';
-			end if;
-			
-			if ondeck then ARREADY <= '0';
-			else           ARREADY <= '1';
-			end if;
+			RVALID  <= SL(replying);
+			ARREADY <= SL(not ondeck);
 			
 			-- And manage reset.
 			if ARESETn = '0' then
@@ -114,61 +117,11 @@ begin
 		end if;
 	end process AXI_READ;
 	
-	-- Manage the write address port
-	AXI_WA: process(ACLK)
-		variable ready: boolean;
-	begin
-		if rising_edge(ACLK) then
-			if wa_good and wd_good and not bhold then
-				ready   := true;
-				wa_good <= false;
-			elsif ready and (AWVALID = '1') then
-				write_addr <= GET_ADDR(AWADDR);
-				ready   := false;
-				wa_good <= true;
-			end if;
-			
-			if ready then AWREADY <= '1';
-			else          AWREADY <= '0';
-			end if;
-			
-			if ARESETn = '0' then
-				ready   := true;
-				wa_good <= false;
-				AWREADY <= '0';
-			end if;
-		end if;
-	end process AXI_WA;
-	
-	-- Manage the write data port
-	AXI_WD: process(ACLK)
-		variable ready: boolean;
-	begin
-		if rising_edge(ACLK) then
-			if wa_good and wd_good and not bhold then
-				ready   := true;
-				wd_good <= false;
-			elsif ready and (WVALID = '1') then
-				write_data <= WDATA;
-				write_strb <= WSTRB;
-				ready   := false;
-				wd_good <= true;
-			end if;
-			
-			if ready then WREADY <= '1';
-			else          WREADY <= '0';
-			end if;
-			
-			if ARESETn = '0' then
-				ready   := true;
-				wd_good <= false;
-				WREADY  <= '0';
-			end if;
-		end if;
-	end process AXI_WD;
-		
-	-- Manage writes
+	-- Manage writes.  Writes support 1 in pipeline support in case acceptance
+	-- is slow, but take a clock after both address and data become valid to
+	-- execute.
 	AXI_WRITE: process(ACLK)
+		variable ready		: boolean;
 		variable replying	: boolean;
 		variable success	: boolean; 
 		
@@ -182,13 +135,16 @@ begin
 			end if;
 			
 			-- Process the new write.
-			if (not ondeck) and wa_good and wd_good then
-				UPDATESIG_REGFILE(write_data, write_strb, write_addr, reg, success);
+			if (not ondeck) and ((AWVALID and WVALID)='1') and (not ready) then
+				ready := true;
+				UPDATESIG_REGFILE(WDATA, WSTRB, GET_ADDR(AWADDR), reg, success);
 	
 				ondeck := true;
 				if success then ondeck_resp := RESP_OKAY;
 				else            ondeck_resp := RESP_SLVERR;
 				end if;
+			else
+				ready := false;
 			end if;
 			
 			-- And pass it forward to the reply exchanger when possible.
@@ -197,20 +153,18 @@ begin
 				replying := ondeck;
 				ondeck := false;
 			end if;
-			bhold <= ondeck;
-			
-			-- Manage the status flags.
-			if replying then BVALID <= '1';
-			else             BVALID <= '0';
-			end if;
 			
 			-- And manage reset.
 			if ARESETn = '0' then
 				replying := false;
-				ondeck := false;
-				reg     <= RESET_t_{name}_REGFILE;
-				BVALID  <= '0';
+				ondeck   := false;
+				ready    := false;
+				reg <= RESET_t_{name}_REGFILE;
 			end if;
+			
+			AWREADY <= SL(ready);
+			WREADY  <= SL(ready);
+			BVALID  <= SL(replying);
 		end if;
 	end process AXI_WRITE;
 	
