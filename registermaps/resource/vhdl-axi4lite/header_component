@@ -1,0 +1,9 @@
+{name} AXI4-Lite Component
+    
+Implements the {name} component on an AXI4-Lite bus.
+
+{desc}{changes}
+
+Template generated automatically on {time:%d %b %Y %H:%M} from
+{source}
+Subject to modification.  See README.rst for details.

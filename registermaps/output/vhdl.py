@@ -757,10 +757,21 @@ class VhdlAxi4Lite(Visitor):
                 .format(node.name, node.width)
             )
         
+        wrapper = textwrap.TextWrapper()
+        header = self.rt('header_component').format(
+            name = node.name,
+            desc = '\n\n'.join(wrapper.fill(d) for d in node.description),
+            source = node.sourcefile,
+            time = datetime.datetime.now(),
+            changes = self.changes
+        )
+        self.print(commentblock(header))
+        self.print()
+        
         addrhigh = (node.size - 1).bit_length() - 1
         datahigh = node.width - 1
         behigh = (node.width // 8) - 1
-        self.printf(self.rt('component'),
+        self.printf(self.rt('body_component'),
             name = node.name,
             addrhigh = addrhigh,
             behigh = behigh,
