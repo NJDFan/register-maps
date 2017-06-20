@@ -722,3 +722,51 @@ class Vhdl(VhdlVisitor):
     def visit_MemoryMap(self, node):
         pass
 
+
+@Outputs.register
+class VhdlAxi4Lite(Visitor):
+    """Basic VHDL output.
+    
+    This output makes no assumptions about what the bus type is, and expects
+    no support packages to be available.
+    """
+    
+    outputname = 'vhdl-axi4lite'
+    extension = '.vhd'
+    encoding = 'iso-8859-1'
+    
+    def begin(self, startnode):
+        changer = FixReservedWords()
+        changed_nodes = changer.execute(startnode)
+        if changed_nodes:
+            changes = (
+                'Changes from XML:\n' +  
+                '\n'.join('    {0[0]}: {0[1]} -> {0[2]}'.format(c) for c in changed_nodes)
+            )
+            printverbose(changes)
+            self.changes = '\n' + changes + '\n'
+        else:
+            self.changes = ''
+        
+    def visit_Component(self, node):
+        """Create a VHDL template file for a Component."""
+        
+        if node.width not in (32, 64):
+            raise ValueError(
+                "AXI4-Lite components must have datawidth 32 or 64, {} has width {}"
+                .format(node.name, node.width)
+            )
+        
+        addrhigh = (node.size - 1).bit_length() - 1
+        datahigh = node.width - 1
+        behigh = (node.width // 8) - 1
+        self.printf(self.rt('component'),
+            name = node.name,
+            addrhigh = addrhigh,
+            behigh = behigh,
+            datahigh = datahigh
+        )
+        
+    def visit_MemoryMap(self, node):
+        pass
+
