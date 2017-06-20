@@ -238,6 +238,7 @@ class GenerateTypes(VhdlVisitor):
         )
         self.print(',\n'.join(lines))
         self.print(');')
+        self.print()
         
     def visit_ComplexRegisterArray(self, node):
         """Generate the subsidary record and array type."""
@@ -264,6 +265,7 @@ class GenerateTypes(VhdlVisitor):
         )
         self.print(',\n'.join(lines))
         self.print('));')
+        self.print()
         
     def visit_SimpleRegisterArray(self, node):
         """Generate the array type."""
@@ -280,6 +282,7 @@ class GenerateTypes(VhdlVisitor):
         self.printf('constant RESET_{0} : {0} := (others => RESET_{1});',
             self.namer(node), self.namer(child)
         )
+        self.print()
         
     def visit_ComplexRegister(self, node):
         """Generate the register type and enumeration constants."""
@@ -304,6 +307,7 @@ class GenerateTypes(VhdlVisitor):
         )
         self.print(',\n'.join(lines))
         self.print(');')
+        self.print()
             
     def visit_SimpleRegister(self, node):
         """Generate the register type."""
@@ -315,6 +319,7 @@ class GenerateTypes(VhdlVisitor):
         self.printf('constant RESET_{0} : {0} :=  "{1:0{2}b}";',
               self.namer(node), node.reset, node.width
         )
+        self.print()
                     
     def visit_Field(self, node):
         """Generate record field definitions, and gather enumeration constants."""
