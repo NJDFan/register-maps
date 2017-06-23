@@ -2,6 +2,8 @@
 register-maps
 =============
 
+|docs|
+
 Use XML files to describe register maps; auto-generate C, VHDL, Python, and HTML.
 
 Execution
@@ -20,3 +22,8 @@ HTML documentation of everything in the output/html directory.
 
 See the docs folder for more information, as well as README.rst files in each
 of the registermaps/resource/* output format folders.
+
+.. |docs| image:: https://readthedocs.org/projects/register-maps/badge/?version=latest
+    :alt: Documentation Status
+    :scale: 100%
+    :target: http://register-maps.readthedocs.io/en/latest/?badge=latest
