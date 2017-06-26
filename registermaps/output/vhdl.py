@@ -22,9 +22,8 @@ import os
 import os.path
 import textwrap
 import datetime
-
 from .. import xml_parser
-from ..util import printverbose, Outputs
+from ..util import printverbose, Outputs, jinja
 from ..visitor import Visitor
 
 class VhdlVisitor(Visitor):
@@ -518,121 +517,51 @@ class GenerateFunctionBodies(VhdlVisitor):
                 readlines = self._regarray_read(node),
             )
             
-    def visit_Register(self, node):
+    def visit_ComplexRegister(self, node):
         """Print register access function bodies."""
         
-        self.printf(self.rt('fnbody_register'),
-            name=node.name,
-            d2rlines = GenerateD2R().execute(node),
-            r2dlines = GenerateR2D().execute(node),
-            updatelines = GenerateRegUpdate().execute(node)
-        )
-     
-class _Indent4Visitor(VhdlVisitor):
-    def finish(self, lastvalue):
-        return textwrap.indent(lastvalue, '    ')
-     
-class GenerateD2R(_Indent4Visitor):
-    """Text for the function body for DAT_TO_register."""
-    
-    def visit_Register(self, node):
-        if node.space:
-            return dedent("""
-                return(
-                {children}
-                );"""
-            ).format(children = ',\n'.join(self.visitchildren(node)))
+        # Start by extracting the fields from the register.
+        def getrange(start, size):
+            if size == 1:
+                return str(start)
+            else:
+                return '{} downto {}'.format(start+size-1, start)
+        
+        def extractor(space):
+            for obj, start, size in space.items():
+                yield {
+                    'name' : obj.name,
+                    'ident' : obj.identifier,
+                    'srcrange' : getrange(start, size),
+                    'subtype' : register_format(obj, index=False),
+                    'range' : getrange(start-obj.offset, size),
+                }
             
-        else:
-            return 'return {fmt}(dat({high} downto 0));'.format(
-                fmt = register_format(node, False).upper(),
-                high = node.width-1
-            )
+        fields = list(extractor(node.space))
+        subspaces = (node.space[start:start+8] for start in range(0, node.width, 8))
+        byte = (list(extractor(s)) for s in subspaces)
+        byte = [{'index' : n, 'fields': f} for n, f in enumerate(byte) if f]
         
-    def visit_Field(self, node):
-        """Pull bus data to a record field."""
-        if node.width == 1:
-            line = '    {name} => dat({high})'
-        else:
-            line = '    {name} => {fmt}(dat({high} downto {low}))'
-        return line.format(
-            name=node.name, fmt=register_format(node, False).upper(),
-            high=node.offset+node.width-1, low=node.offset
-        )  
+        tmpl = jinja.get_template('vhdl/fnbody_register_complex.j2')
+        self.print(tmpl.render(
+            name=node.name, fields=fields, byte=byte
+        ))   
         
-class GenerateR2D(_Indent4Visitor):
-    """Text for the function body for register_TO_DAT."""
-    
-    def visit_Register(self, node):
-        if node.space:
-            return '\n'.join(self.visitchildren(node))
-        else:
-            return 'ret({high} downto 0) := STD_LOGIC_VECTOR(reg);'.format(
-                high=node.width-1
-            )
+    def visit_SimpleRegister(self, node):
+        """Print register access function bodies."""
             
-    def visit_Field(self, node):
-        if node.width == 1:
-            line = 'ret({high}) := reg.{identifier};'
-        else:
-            line = 'ret({high} downto {low}) := STD_LOGIC_VECTOR(reg.{identifier});'
-        return line.format(
-            identifier=node.identifier, high=node.offset+node.width-1, low=node.offset
-        )
+        byte = [
+            '{} downto {}'.format(min(low+7, node.width-1), low)
+            for low in range(0, node.width, 8)
+        ]
         
-class GenerateRegUpdate(_Indent4Visitor):
-    """Text for the function body for UPDATE_register."""
-    
-    def visit_Register(self, node):
-        return '\n'.join(self.complex(node) if node.space else self.simple(node))
-    
-    def simple(self, node):
-        """Assigns the register byte by byte.
-        
-        Yields:
-            Lines of text
-        """
-        
-        fmt = register_format(node, False).upper()
-        for byte, start in enumerate(range(0, node.width, 8)):
-            end = min(start+7, node.width)
-            yield dedent("""
-                if IS_HIGH(byteen({byte})) then
-                    reg({H} downto {L}) := {fmt}(dat({H} downto {L}));
-                end if;""".format(byte=byte, fmt=fmt, H=end, L=start),
-            )
-            
-    def complex(self, node):
-        """Assigns the register fields byte by byte.
-        
-        Yields:
-            Lines of text
-        """
-        for byte, start in enumerate(range(0, node.width, 8)):
-            subspace = node.space[start:start+8]
-            if not any(obj for obj, _, _ in subspace):
-                continue
-                
-            yield 'if IS_HIGH(byteen({})) then'.format(byte) 
-            for obj, start, size in subspace:
-                if not obj:
-                    continue
-                if size > 1 or obj.size > 1:
-                    # This field is indexable.
-                    line = '    reg.{identifier}({fh} downto {fl}) := {fmt}(dat({dh} downto {dl}));'
-                else:
-                    # This field is a bit.
-                    line = '    reg.{identifier} := dat({dl});'
-                yield line.format(
-                    fh = start+size-1-obj.offset,
-                    fl = start-obj.offset,
-                    dh = start+size-1,
-                    dl = start,
-                    fmt = register_format(obj, False).upper(),
-                    identifier=obj.identifier
-                )
-                
-            yield 'end if;'
+        tmpl = jinja.get_template('vhdl/fnbody_register_simple.j2')
+        self.print(tmpl.render(
+            name=node.name, ident=node.identifier,
+            subtype=register_format(node, index=False),
+            srcrange='{} downto 0'.format(node.width-1),
+            byte=byte
+        ))
 
 #######################################################################
 # Main visitors

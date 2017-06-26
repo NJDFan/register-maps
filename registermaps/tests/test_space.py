@@ -9,9 +9,7 @@ class BaseSpaceTest(unittest.TestCase):
 	resizer = space.NoResizer
 	
 	initial_items = ()
-	gaps = (
-		(0, 0),
-	)
+	gaps = tuple()
 	
 	def setUp(self):
 		sp = space.Space(

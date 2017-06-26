@@ -75,7 +75,7 @@
 	
     <registerarray name="RISE" count="3" framesize="0x1" offset="28">
         <desc>Rise debounce time </desc>
-            <register name="RISEn"  width="16"></register>
+            <register name="RISEn"  width="14"></register>
     </registerarray>
 	
 	<registerarray name="FALL" count ="3" framesize="0x1" >

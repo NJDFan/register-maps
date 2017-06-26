@@ -32,6 +32,8 @@ will fill the first available gap.
 Presently there is no ability to remove items from a Space.
 """
 
+from copy import copy
+
 class PlacedObject:
     """
     Represents an object as placed in the Space.
@@ -208,6 +210,8 @@ class Space:
         # Allow passing classes rather than an object for the placer and
         # resizer.
         
+        self._start = 0
+        self._end = None
         self._resizer = resizer.instance
         self._placer = placer.instance
         self._items = []
@@ -219,7 +223,7 @@ class Space:
     @property
     def itemcount(self):
         """Number of true items in the space."""
-        return len(self._items)
+        return sum(1 for _ in self.items())
     
     @property
     def gapcount(self):
@@ -229,15 +233,18 @@ class Space:
     def __len__(self):
         return sum(1 for _ in self._enumerated_iter())
     
-    def _enumerated_iter(self):
+    def _enumerated_iter_all(self):
         """Generate (idx, po) pairs of index and PlacedObject. 
+        
+        Ignores subspace constraints.
         
         index preceeds the next true object if po is a gap.
         """
         
         # While we're empty it's a special case.
         if not self._items:
-            yield (0, PlacedObject(None, 0, self.size))
+            if self.size:
+                yield (0, PlacedObject(None, 0, self.size))
             
         else:
             prev = PlacedObject(None, -1, 1)
@@ -248,6 +255,24 @@ class Space:
                 prev = i
             if i.end < self.size:
                 yield (n+1, PlacedObject(None, i.end, self.size-i.end))
+                
+    def _enumerated_iter(self):
+        """Generate (idx, po) pairs of index and PlacedObject. 
+        
+        Takes subspace constraints into account.
+        
+        index preceeds the next true object if po is a gap.
+        """
+        
+        stop = self._end
+        if stop is None:
+            stop = self.size
+        
+        for n, po in self._enumerated_iter_all():
+            start = max(po.start, self._start)
+            end = min(po.end, stop)
+            if start < end:
+                yield(n, PlacedObject(po.obj, start, end-start))
     
     def __iter__(self):
         """Iterate over everything, items and gaps, in the space."""
@@ -412,15 +437,11 @@ class Space:
         start, stop, stride = slc.indices(self.size)
         if stride != 1:
             raise ValueError('slice stride not supported')
-        
-        ret = []
-        for po in self:
-            start = max(po.start, start)
-            end = min(po.end, stop)
-            if start < end:
-                ret.append(PlacedObject(po.obj, start, end-start))
-                    
-        return ret
+            
+        obj = copy(self)
+        obj._start = start
+        obj._end = stop
+        return obj
         
     def __getitem__(self, idx):
         """Shorthand for space.at(idx) or space.takeslice(idx) based

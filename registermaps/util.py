@@ -2,6 +2,7 @@ import importlib
 import io
 import sys
 import pkg_resources
+import jinja2
 from functools import lru_cache
 
 ######################################################################
@@ -29,6 +30,13 @@ def resource_text(resourcename, encoding='utf-8', errors='strict'):
     
     bindata = pkg_resources.resource_string(__package__, resourcename)
     return bindata.decode(encoding, errors)
+
+# Create a jinja2 template environment
+jinja = jinja2.Environment(
+    loader = jinja2.PackageLoader('registermaps', 'resource'),
+    trim_blocks = True,
+    lstrip_blocks = True
+)
 
 ######################################################################
 # Package-wide global variables.

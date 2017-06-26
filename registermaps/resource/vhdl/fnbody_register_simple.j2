@@ -1,0 +1,36 @@
+---- {{name}} ----
+function DAT_TO_{{name}}(dat: t_busdata) return t_{{name}} is
+    variable ret : t_{{name}};
+begin
+    return {{subtype|upper}}( dat({{srcrange}}) );
+end function DAT_TO_{{name}};
+
+function {{name}}_TO_DAT(reg: t_{{name}}) return t_busdata is
+    variable ret: t_busdata := (others => '0');
+begin
+    ret({{srcrange}}) := STD_LOGIC_VECTOR(reg.{{ident}});
+    return ret;
+end function {{name}}_TO_DAT;
+
+procedure UPDATE_{{name}}(
+    dat: in t_busdata; byteen: in std_logic_vector;
+    variable reg: inout t_{{name}}) is
+begin
+  {% for b in byte %}
+    if IS_HIGH(byteen({{loop.index0}})) then
+        reg({{b}}) := {{subtype|upper}}( dat({{b}}) );
+    end if;
+  {% endfor %}
+end procedure UPDATE_{{name}};
+
+procedure UPDATESIG_{{name}}(
+    dat: in t_busdata; byteen: in std_logic_vector;
+    signal reg: inout t_{{name}}
+) is
+    variable r : t_{{name}};
+begin
+    r := reg;
+    UPDATE_{{name}}(dat, byteen, r);
+    reg <= r;
+end procedure UPDATESIG_{{name}};
+
