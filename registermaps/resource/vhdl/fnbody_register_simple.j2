@@ -1,3 +1,16 @@
+{#  fnbody_register_simple.j2
+
+Function bodies for simple registers.
+
+Expects:
+    name (str): Name of the register.
+    subtype (str): Base subtype (no indices) of the register.
+    ident (str): Identifier of the register
+        (no VHDL reserved word conflicts allowed)
+    srcrange (str): Bit range in the source word, i.e. '23 downto 0'
+    byte (list of str): Byte-wide bit ranges startgin with the LSB,
+        i.e. '7 downto 0'
+#}
 ---- {{name}} ----
 function DAT_TO_{{name}}(dat: t_busdata) return t_{{name}} is
     variable ret : t_{{name}};
