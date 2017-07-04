@@ -516,7 +516,7 @@ class GenerateFunctionBodies(VhdlVisitor):
         
         tmpl = jinja.get_template('vhdl/fnbody_register_simple.j2')
         self.print(tmpl.render(
-            name=node.name, ident=node.identifier,
+            name=node.name,
             subtype=register_format(node, index=False),
             srcrange='{} downto 0'.format(node.width-1),
             byte=byte

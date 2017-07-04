@@ -19,7 +19,7 @@ begin
     success := false;
  {% else %}
     idx := offset / {{node.name}}_FRAMESIZE;
-    UPDATE_{{child}}(dat, byteen, ra(idx));
+    UPDATE_{{child.name}}(dat, byteen, ra(idx));
     success := true;
  {% endif %}
 end procedure UPDATE_{{node.name}};
@@ -38,15 +38,15 @@ begin
  {% else %}
     idx := offset / {{node.name}}_FRAMESIZE;
     temp := ra(idx);
-    UPDATE_{{child}}(dat, byteen, temp);
+    UPDATE_{{child.name}}(dat, byteen, temp);
     ra(idx) <= temp;
     success := true;
  {% endif %}
 end procedure UPDATESIG_{{node.name}};
 
-procedure READ_{{name}}(
+procedure READ_{{node.name}}(
     offset: in t_addr;
-    ra: in ta_{name};
+    ra: in ta_{{node.name}};
     dat: out t_busdata;
     success: out boolean
 ) is
@@ -57,7 +57,7 @@ begin
     success := false;
  {% else %}
     idx := offset / {{node.name}}_FRAMESIZE;
-    dat := {{child}}_TO_DAT(ra(idx));
+    dat := {{child.name}}_TO_DAT(ra(idx));
     success := true;
  {% endif %}
-end procedure READ_{{name}};
+end procedure READ_{{node.name}};

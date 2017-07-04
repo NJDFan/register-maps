@@ -5,8 +5,6 @@ Function bodies for simple registers.
 Expects:
     name (str): Name of the register.
     subtype (str): Base subtype (no indices) of the register.
-    ident (str): Identifier of the register
-        (no VHDL reserved word conflicts allowed)
     srcrange (str): Bit range in the source word, i.e. '23 downto 0'
     byte (list of str): Byte-wide bit ranges startgin with the LSB,
         i.e. '7 downto 0'
@@ -21,7 +19,7 @@ end function DAT_TO_{{name}};
 function {{name}}_TO_DAT(reg: t_{{name}}) return t_busdata is
     variable ret: t_busdata := (others => '0');
 begin
-    ret({{srcrange}}) := STD_LOGIC_VECTOR(reg.{{ident}});
+    ret({{srcrange}}) := STD_LOGIC_VECTOR(reg);
     return ret;
 end function {{name}}_TO_DAT;
 
