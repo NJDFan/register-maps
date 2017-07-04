@@ -1,0 +1,63 @@
+{#  fnbody_registerarray_simple.j2
+
+Simple registerarray function body templates.
+
+Expects:
+    node (RegisterArray): The registerarray in question
+    child (Register): The register element in the array.
+#}
+---- {{node.name}} ----
+procedure UPDATE_{{node.name}}(
+    dat: in t_busdata; byteen : in std_logic_vector;
+    offset: in t_addr;
+    variable ra: inout ta_{{node.name}};
+    success: out boolean
+) is
+    variable idx : integer range ta_{{node.name}}'range;
+begin
+ {% if node.readOnly %}
+    success := false;
+ {% else %}
+    idx := offset / {{node.name}}_FRAMESIZE;
+    UPDATE_{{child}}(dat, byteen, ra(idx));
+    success := true;
+ {% endif %}
+end procedure UPDATE_{{node.name}};
+
+procedure UPDATESIG_{{node.name}}(
+    dat: in t_busdata; byteen : in std_logic_vector;
+    offset: in t_addr;
+    signal ra: inout ta_{{node.name}};
+    success: out boolean
+) is
+    variable idx : integer range ta_{{node.name}}'range;
+    variable temp : t_{{child.name}};
+begin
+ {% if node.readOnly %}
+    success := false;
+ {% else %}
+    idx := offset / {{node.name}}_FRAMESIZE;
+    temp := ra(idx);
+    UPDATE_{{child}}(dat, byteen, temp);
+    ra(idx) <= temp;
+    success := true;
+ {% endif %}
+end procedure UPDATESIG_{{node.name}};
+
+procedure READ_{{name}}(
+    offset: in t_addr;
+    ra: in ta_{name};
+    dat: out t_busdata;
+    success: out boolean
+) is
+    variable idx : integer range ta_{{node.name}}'range;
+begin
+ {% if node.writeOnly %}
+    dat := (others => 'X');
+    success := false;
+ {% else %}
+    idx := offset / {{node.name}}_FRAMESIZE;
+    dat := {{child}}_TO_DAT(ra(idx));
+    success := true;
+ {% endif %}
+end procedure READ_{{name}};

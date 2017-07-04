@@ -1,0 +1,109 @@
+{#  fnbody_registerarray_complex.j2
+
+Complex registerarray function body templates.
+
+Expects:
+    node (RegisterArray): The registerarray in question
+#}
+---- {{node.name}} ----
+procedure UPDATE_{{node.name}}(
+    dat: in t_busdata; byteen : in std_logic_vector;
+    offset: in t_addr;
+    variable ra: inout ta_{{name}};
+    success: out boolean
+) is
+    variable idx : integer range ta_{{node.name}}'range;
+    variable offs: integer range 0 to {{node.name}}_FRAMESIZE-1;
+begin
+ {% if node.readOnly %}
+    success := false;
+ {% else %}
+    idx := offset / {{node.name}}_FRAMESIZE;
+    offs := offset mod {{node.name}}_FRAMESIZE;
+    success := true;
+    case offs is
+    {% for child, start, size in node.space.items() %}
+     {% if not child.readOnly %}
+      {% if child.size == 1 %}
+        when {{child.name}}_ADDR =>
+            UPDATE_{{child.name}}(dat, byteen, ra(idx).{{child.identifier}});
+      {% else %}
+        when {{child.name}}_BASEADDR to {{child.name}}_LASTADDR =>
+            UPDATE_{{child.name}}(dat, byteen, offs-{{child.name}}_BASEADDR, ra(idx).{{child.identifier}}, success);
+      {% endif %}
+     {% endif %}
+    {% endfor %}
+        when others => success := false;
+    end case;
+ {% endif %}
+end procedure UPDATE_{{node.name}};
+
+procedure UPDATESIG_{{node.name}}(
+    dat: in t_busdata; byteen : in std_logic_vector;
+    offset: in t_addr;
+    signal ra: inout ta_{{node.name}};
+    success: out boolean
+) is
+    variable idx : integer range ta_{{node.name}}'range;
+    variable offs: integer range 0 to {{node.name}}_FRAMESIZE-1;
+    variable temp: tb_{{node.name}};
+begin
+ {% if node.readOnly %}
+    success := false;
+ {% else %}
+    idx := offset / {{node.name}}_FRAMESIZE;
+    offs := offset mod {{node.name}}_FRAMESIZE;
+    success := true;
+    temp := ra(idx);
+    case offs is
+    {% for child, start, size in node.space.items() %}
+     {% if not child.readOnly %}
+      {% if child.size == 1 %}
+        when {{child.name}}_ADDR =>
+            UPDATE_{{child.name}}(dat, byteen, temp.{{child.identifier}});
+            ra(idx).{{child.identifier}} <= temp.{{child.identifier}};
+      {% else %}
+        when {child.name}_BASEADDR to {child.name}_LASTADDR =>
+            UPDATE_{{child.name}}(dat, byteen, offs-{{child.name}}_BASEADDR, temp.{{child.identifier}}, success);
+            ra(idx).{{child.identifier}} <= temp.{{child.identifier}};
+      {% endif %}
+     {% endif %}
+    {% endfor %}
+        when others => success := false;
+    end case;
+ {% endif %}
+end procedure UPDATESIG_{{node.name}};
+
+procedure READ_{{node.name}}(
+    offset: in t_addr;
+    ra: in ta_{name};
+    dat: out t_busdata;
+    success: out boolean
+) is
+    variable idx : integer range ta_{{node.name}}'range;
+    variable offs: integer range 0 to {{node.name}}_FRAMESIZE-1;
+begin
+ {% if node.writeOnly %}
+    dat := (others => 'X');
+    success := false;
+ {% else %}
+    idx := offset / {{node.name}}_FRAMESIZE;
+    offs := offset mod {{node.name}}_FRAMESIZE;
+    success := true;
+    dat := (others => 'X');
+    case offs is
+    {% for child, start, size in node.space.items() %}
+     {% if not child.writeOnly %}
+      {% if child.size == 1 %}
+        when {{child.name}}_ADDR =>
+            dat := {{child.name}}_TO_DAT(ra(idx).{{child.identifier}});
+      {% else %}
+        when {{child.name}}_BASEADDR to {{child.name}}_LASTADDR =>
+            READ_{{child.name}}(offs-{{child.name}}_BASEADDR, ra(idx).{{child.identifier}}, dat, success);
+      {% endif %}
+     {% endif %}
+    {% endfor %}
+        when other => success := false;
+    end case;
+ {% endif %}
+end procedure READ_{{node.name}};

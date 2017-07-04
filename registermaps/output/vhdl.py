@@ -446,34 +446,6 @@ class GenerateFunctionBodies(VhdlVisitor):
         skipontrue = 'writeOnly'
     )
     
-    _regarray_update = _fnbodyrecord(
-        Register = "when {child.name}_ADDR => UPDATE_{child.name}(dat, byteen, ra(idx).{child.identifier});",
-        RegisterArray = """
-            when {child.name}_BASEADDR to {child.name}_LASTADDR =>
-                UPDATE_{child.name}(dat, byteen, offs-{child.name}_BASEADDR, ra(idx).{child.identifier}, success);
-            """
-    )
-    _regarray_updatesig = _fnbodyrecord(
-        Register = """
-            when {child.name}_ADDR =>
-                UPDATE_{child.name}(dat, byteen, temp.{child.identifier});
-                ra(idx).{child.identifier} <= temp.{child.identifier};
-            """,
-        RegisterArray = """
-            when {child.name}_BASEADDR to {child.name}_LASTADDR =>
-                UPDATE_{child.name}(dat, byteen, offs-{child.name}_BASEADDR, ra(idx).{child.identifier}, success);
-                ra(idx).{child.identifier} <= temp.{child.identifier};
-            """
-    )
-    _regarray_read = _fnbodyrecord(
-        Register = "when {child.name}_ADDR => dat := {child.name}_TO_DAT(ra(idx).{child.identifier});",
-        RegisterArray = """
-            when {child.name}_BASEADDR to {child.name}_LASTADDR =>
-                READ_{child.name}(offs-{child.name}_BASEADDR, ra(idx).{child.identifier}, dat, success);
-            """,
-        skipontrue = 'writeOnly'
-    )
-    
     def visit_Component(self, node):
         """Print all function bodies for the Component"""
         
@@ -495,27 +467,13 @@ class GenerateFunctionBodies(VhdlVisitor):
         """Register array access function bodies."""
 
         self.visitchildren(node)
-        if len(node.space) == 1:
-            child = next(child for child, _, _ in node.space.items())
-            if node.readOnly or child.readOnly:
-                t = self.rt('fnbody_registerarray_simple_ro')
-            else:
-                t = self.rt('fnbody_registerarray_simple_write')
-            self.printf(t, name = node.name, child = child.name)
-                
-            if node.writeOnly or child.writeOnly:
-                t = self.rt('fnbody_registerarray_simple_wo')
-            else:
-                t = self.rt('fnbody_registerarray_simple_read')
-            self.printf(t, name = node.name, child = child.name)
-                
+        if node.space.itemcount > 1:
+            tmpl = jinja.get_template('vhdl/fnbody_registerarray_complex.j2')
+            self.print(tmpl.render(node=node)) 
         else:
-            self.printf(self.rt('fnbody_registerarray_complex'),
-                name = node.name,
-                updatelines = self._regarray_update(node),
-                updatesiglines = self._regarray_updatesig(node),
-                readlines = self._regarray_read(node),
-            )
+            tmpl = jinja.get_template('vhdl/fnbody_registerarray_simple.j2')
+            child = next(node.space.items()).obj
+            self.print(tmpl.render(node=node, child=child)) 
             
     def visit_ComplexRegister(self, node):
         """Print register access function bodies."""
@@ -527,25 +485,26 @@ class GenerateFunctionBodies(VhdlVisitor):
             else:
                 return '{} downto {}'.format(start+size-1, start)
         
-        def extractor(space):
+        def extractor(space, allow_readOnly):
             for obj, start, size in space.items():
-                yield {
-                    'name' : obj.name,
-                    'ident' : obj.identifier,
-                    'srcrange' : getrange(start, size),
-                    'subtype' : register_format(obj, index=False),
-                    'range' : getrange(start-obj.offset, size),
-                }
+                if (not obj.readOnly) or allow_readOnly:
+                    yield {
+                        'name' : obj.name,
+                        'ident' : obj.identifier,
+                        'srcrange' : getrange(start, size),
+                        'subtype' : register_format(obj, index=False),
+                        'range' : getrange(start-obj.offset, size),
+                    }
             
-        fields = list(extractor(node.space))
+        fields = list(extractor(node.space, True))
         subspaces = (node.space[start:start+8] for start in range(0, node.width, 8))
-        byte = (list(extractor(s)) for s in subspaces)
+        byte = (list(extractor(s, False)) for s in subspaces)
         byte = [{'index' : n, 'fields': f} for n, f in enumerate(byte) if f]
         
         tmpl = jinja.get_template('vhdl/fnbody_register_complex.j2')
         self.print(tmpl.render(
             name=node.name, fields=fields, byte=byte
-        ))   
+        ))
         
     def visit_SimpleRegister(self, node):
         """Print register access function bodies."""

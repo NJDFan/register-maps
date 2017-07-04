@@ -160,9 +160,11 @@ DAT_TO_<REGISTER> turns the abstract data on the bus into the register data
 type, which may be a simple type like a signed, unsigned, or std_logic_vector,
 or may be a record of such types, in which case the bits will be translated to
 the appropriate fields.  <REGISTER>_TO_DAT reverses this operation, filling
-unused bits with '0'.
+unused bits with '0'.  All fields are operated on, regardless of readOnly
+and writeOnly settings.
 
 UPDATE_<REGISTER> and UPDATESIG_<REGISTER> update those bits of the register
 data specified by the byte enable mask.  Bits where byteen='0' are unaltered.
 Again, UPDATE_<REGISTER> is used if the register storage is a VHDL variable, 
-and UPDATESIG_<REGISTER> if it is a signal.
+and UPDATESIG_<REGISTER> if it is a signal.  As these functions are made to
+be executed in response to bus writes, readOnly fields are ignored.
