@@ -265,6 +265,12 @@ class basic(Visitor):
                 CLASS('fieldlist')
             )
             root.append(fieldlist)
+            
+        elif node.width != node.parent.width:
+            # We have a truncated field, i.e. not all the bits that the
+            # component allows.
+            root.append(E.P('Bits {}:0 only.'.format(node.width-1)))
+            
         return root
                 
     def visit_Field(self, node):

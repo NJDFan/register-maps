@@ -177,7 +177,7 @@ class GenerateAddressConstants(VhdlVisitor):
             ('_BASEADDR', node.offset),
             ('_LASTADDR', node.offset+node.size-1),
             ('_FRAMESIZE', node.framesize),
-            ('_FRAMECOUNT', node.framesize)
+            ('_FRAMECOUNT', node.count)
         )
         for name, val in consts:
             self.printaddress(node.name+name, val)
@@ -253,7 +253,7 @@ class GenerateTypes(VhdlVisitor):
                     
         # And the array type.
         self.printf('type {} is array({} downto 0) of {};',
-            self.namer(node), node.size-1, basename
+            self.namer(node), node.count-1, basename
         )
         
         # And the default array.
@@ -274,7 +274,7 @@ class GenerateTypes(VhdlVisitor):
         
         # Create the array type.
         self.printf('type {} is array({} downto 0) of {};',
-            self.namer(node), node.size-1, self.namer(child)
+            self.namer(node), node.count-1, self.namer(child)
         )
         
         # And a default for it.
