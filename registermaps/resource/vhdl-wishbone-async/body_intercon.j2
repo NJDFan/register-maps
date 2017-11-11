@@ -107,14 +107,14 @@ begin
 	{% endfor %}
 	
 	-- MISO signals take advantage of the fact that the slaves are well
-	-- behaved for the strobes.
-	{% macro anditall(suffix) -%}
-		{% for c in instances %}{{ c.name + suffix }}{% if not loop.last %} and {% endif %}{% endfor %};
+	-- behaved to simplify the strobes.
+	{% macro oritall(suffix) -%}
+		{% for c in instances %}{{ c.name + suffix }}{% if not loop.last %} or {% endif %}{% endfor %};
 	{%- endmacro %}
 	
-	ACK_O <= {{ anditall('_ACK_I') }}
-	ERR_O <= {{ anditall('_ERR_I') }}
-	RTY_O <= {{ anditall('_RTY_I') }}
+	ACK_O <= {{ oritall('_ACK_I') }}
+	ERR_O <= {{ oritall('_ERR_I') }}
+	RTY_O <= {{ oritall('_RTY_I') }}
 	
 	DAT_O <=
 		{% for c in instances %}
