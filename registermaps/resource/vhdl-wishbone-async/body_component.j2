@@ -4,10 +4,36 @@ WISHBONE (Async) Component Body
 
 Expects:
 	node (Node): The component being generated
-	header (str): Fully formatted header block
+    changes (list): List of 3-element change tuples
+    time (datetime): The time of file generation.
 #}
 ------------------------------------------------------------------------------
-{{ header }} 
+{% filter reflow(width = 76, indent = '--  ') %}
+{{ node.name }} WISHBONE Component
+
+
+Implements the {{ node.name }} component on a WISHBONE B4 bus using
+an asynchronous turnaround.
+
+
+{% for d in node.description %}
+{{ d }}
+
+{% endfor %}
+
+{% if changes %}
+Changes from XML:
+{% for c in changes %}
+    {{ c[0] }}: {{ c[1] }} -> {{ c[2] }}
+    
+{% endfor %}
+
+{% endif %}
+
+Template generated automatically on {{ time.strftime("%d %b %Y %H:%M") }} from 
+{{ node.sourcefile }}.  Subject to modification.  See README.rst for details.
+{% endfilter %}
+
 ------------------------------------------------------------------------------
 
 library ieee;
@@ -42,19 +68,14 @@ use work.pkg_{{ node.name }}.all;
 
 architecture Behavioral of {{ node.name }} is
 	
-	function SL(x : boolean) return std_logic is
-	begin
-		if x then return '1';
-		else return '0';
-		end if;
-	end function SL;
+	-- TODO: Add any local signals here.
 	
 begin
 	
 	-- Main bus interface.
 	WISHBONE: process(CLK_I)
 		variable addr : t_addr;
-		variable reg : t_{{ node.name }}_regfile := RESET_t_{name}_REGFILE;
+		variable reg : t_{{ node.name }}_regfile := RESET_t_{{ node.name }}_REGFILE;
 		variable success : boolean;
 		variable rdat : t_busdata;
 	begin
@@ -87,7 +108,7 @@ begin
 		if RST_I = '1' then
 			ACK_O <= '0';
 			ERR_O <= '0';
-			reg := RESET_t_{name}_REGFILE;
+			reg := RESET_t_{{ node.name }}_REGFILE;
 		end if;
 		
 		-- TODO: Process any updated values here.

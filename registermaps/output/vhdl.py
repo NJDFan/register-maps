@@ -695,25 +695,35 @@ class VhdlWishboneAsync(Visitor):
     def visit_Component(self, node):
         """Create a VHDL template file for a Component."""
         
-        # Generating the header block requires pulling it in as a separate
-        # template so that we can reflow it to be pretty.
-        #
-        header = textfn.reflow(
-            jinja.get_template('vhdl-wishbone-async/header_component.j2').render(
-                node = node,
-                changes = self.changed_nodes,
-                time = datetime.datetime.now(),
-            ),
-            width = 76, indent = '--  '
-        )
-        
-        # Now insert the header block with the rest into the template.
         body = jinja.get_template('vhdl-wishbone-async/body_component.j2')
         self.print(body.render(
             node = node,
-            header = header
+            changes = self.changed_nodes,
+            time = datetime.datetime.now(),
         ))
         
     def visit_MemoryMap(self, node):
-        pass
+        """Create a VHDL file (probably usable as-is) providing INTERCON
+        from a MemoryMap."""
+        
+        # Build up the self.instances array.
+        self.instances = []
+        self.visitchildren(node)
+        
+        # We can only work with arrays where all the datawidths are the same
+        datawidths = set(c.binding.width for c in self.instances)
+        if len(datawidths) > 1:
+            raise ValueError("Must have all slaves with same data width.")
+        datawidth = datawidths.pop()
+        
+        body = jinja.get_template('vhdl-wishbone-async/body_intercon.j2')
+        self.print(body.render(
+            node = node,
+            instances = self.instances,
+            datawidth = datawidth,
+            changes = self.changed_nodes,
+            time = datetime.datetime.now(),
+        ))
 
+    def visit_Instance(self, node):
+        self.instances.append(node)
