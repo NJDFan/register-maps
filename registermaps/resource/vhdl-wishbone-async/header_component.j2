@@ -1,0 +1,31 @@
+{# ---------------------- header_component.j2 --------------------------------
+
+WISHBONE (Async) Component Header.  This will need to be rewordwrapped after
+we fill in the blanks.
+
+Expects:
+    node (Component): The component in question
+    changes (list): List of 3-element change tuples
+    time (datetime): The time of file generation.
+---------------------------------------------------------------------------- #}
+{{ node.name }} WISHBONE Component
+   
+   
+Implements the {{ node.name }} component on a WISHBONE B4 bus using
+an asynchronous turnaround.
+
+
+{% for d in node.description %}
+{{ d }}
+
+  
+{% endfor %}
+{% if changes %}
+Changes from XML:
+{% for c in changes %}
+    {{ c[0] }}: {{ c[1] }} -> {{ c[2] }}
+    
+{% endfor %}
+{% endif %}
+Template generated automatically on {{ time.strftime("%d %b %Y %H:%M") }} from 
+{{ node.sourcefile }}.  Subject to modification.  See README.rst for details.

@@ -22,7 +22,7 @@ import os
 import os.path
 import textwrap
 import datetime
-from .. import xml_parser
+from .. import xml_parser, textfn
 from ..util import printverbose, Outputs, jinja
 from ..visitor import Visitor
 
@@ -618,10 +618,9 @@ class Vhdl(VhdlVisitor):
 
 @Outputs.register
 class VhdlAxi4Lite(Visitor):
-    """Basic VHDL output.
+    """VHDL component with an AXI-4 Lite interface.
     
-    This output makes no assumptions about what the bus type is, and expects
-    no support packages to be available.
+    The code generated is meant as template code to be user-modified.
     """
     
     outputname = 'vhdl-axi4lite'
@@ -670,6 +669,50 @@ class VhdlAxi4Lite(Visitor):
             behigh = behigh,
             datahigh = datahigh
         )
+        
+    def visit_MemoryMap(self, node):
+        pass
+
+@Outputs.register
+class VhdlWishboneAsync(Visitor):
+    """VHDL component with an asynchronous turnaround WISHBONE interface.
+    
+    The code generated is meant as template code to be user-modified.
+    """
+    
+    outputname = 'vhdl-wishbone-async'
+    extension = '.vhd'
+    encoding = 'iso-8859-1'
+    
+    def begin(self, startnode):
+        changer = FixReservedWords()
+        self.changed_nodes = changer.execute(startnode)
+        if self.changed_nodes:
+            printverbose('Changes from XML:')
+            for nodetype, old, new in self.changed_nodes:
+                printverbose('    {}: {} -> {}'.format(nodetype, old, new))
+        
+    def visit_Component(self, node):
+        """Create a VHDL template file for a Component."""
+        
+        # Generating the header block requires pulling it in as a separate
+        # template so that we can reflow it to be pretty.
+        #
+        header = textfn.reflow(
+            jinja.get_template('vhdl-wishbone-async/header_component.j2').render(
+                node = node,
+                changes = self.changed_nodes,
+                time = datetime.datetime.now(),
+            ),
+            width = 76, indent = '--  '
+        )
+        
+        # Now insert the header block with the rest into the template.
+        body = jinja.get_template('vhdl-wishbone-async/body_component.j2')
+        self.print(body.render(
+            node = node,
+            header = header
+        ))
         
     def visit_MemoryMap(self, node):
         pass
