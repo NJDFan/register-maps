@@ -22,7 +22,7 @@ import os
 import os.path
 import textwrap
 import datetime
-from .. import xml_parser
+from .. import xml_parser, textfn
 from ..util import printverbose, Outputs, jinja
 from ..visitor import Visitor
 
@@ -177,7 +177,7 @@ class GenerateAddressConstants(VhdlVisitor):
             ('_BASEADDR', node.offset),
             ('_LASTADDR', node.offset+node.size-1),
             ('_FRAMESIZE', node.framesize),
-            ('_FRAMECOUNT', node.framesize)
+            ('_FRAMECOUNT', node.count)
         )
         for name, val in consts:
             self.printaddress(node.name+name, val)
@@ -253,7 +253,7 @@ class GenerateTypes(VhdlVisitor):
                     
         # And the array type.
         self.printf('type {} is array({} downto 0) of {};',
-            self.namer(node), node.size-1, basename
+            self.namer(node), node.count-1, basename
         )
         
         # And the default array.
@@ -274,7 +274,7 @@ class GenerateTypes(VhdlVisitor):
         
         # Create the array type.
         self.printf('type {} is array({} downto 0) of {};',
-            self.namer(node), node.size-1, self.namer(child)
+            self.namer(node), node.count-1, self.namer(child)
         )
         
         # And a default for it.
@@ -618,10 +618,9 @@ class Vhdl(VhdlVisitor):
 
 @Outputs.register
 class VhdlAxi4Lite(Visitor):
-    """Basic VHDL output.
+    """VHDL component with an AXI-4 Lite interface.
     
-    This output makes no assumptions about what the bus type is, and expects
-    no support packages to be available.
+    The code generated is meant as template code to be user-modified.
     """
     
     outputname = 'vhdl-axi4lite'
@@ -674,3 +673,57 @@ class VhdlAxi4Lite(Visitor):
     def visit_MemoryMap(self, node):
         pass
 
+@Outputs.register
+class VhdlWishboneAsync(Visitor):
+    """VHDL component with an asynchronous turnaround WISHBONE interface.
+    
+    The code generated is meant as template code to be user-modified.
+    """
+    
+    outputname = 'vhdl-wishbone-async'
+    extension = '.vhd'
+    encoding = 'iso-8859-1'
+    
+    def begin(self, startnode):
+        changer = FixReservedWords()
+        self.changed_nodes = changer.execute(startnode)
+        if self.changed_nodes:
+            printverbose('Changes from XML:')
+            for nodetype, old, new in self.changed_nodes:
+                printverbose('    {}: {} -> {}'.format(nodetype, old, new))
+        
+    def visit_Component(self, node):
+        """Create a VHDL template file for a Component."""
+        
+        body = jinja.get_template('vhdl-wishbone-async/body_component.j2')
+        self.print(body.render(
+            node = node,
+            changes = self.changed_nodes,
+            time = datetime.datetime.now(),
+        ))
+        
+    def visit_MemoryMap(self, node):
+        """Create a VHDL file (probably usable as-is) providing INTERCON
+        from a MemoryMap."""
+        
+        # Build up the self.instances array.
+        self.instances = []
+        self.visitchildren(node)
+        
+        # We can only work with arrays where all the datawidths are the same
+        datawidths = set(c.binding.width for c in self.instances)
+        if len(datawidths) > 1:
+            raise ValueError("Must have all slaves with same data width.")
+        datawidth = datawidths.pop()
+        
+        body = jinja.get_template('vhdl-wishbone-async/body_intercon.j2')
+        self.print(body.render(
+            node = node,
+            instances = self.instances,
+            datawidth = datawidth,
+            changes = self.changed_nodes,
+            time = datetime.datetime.now(),
+        ))
+
+    def visit_Instance(self, node):
+        self.instances.append(node)

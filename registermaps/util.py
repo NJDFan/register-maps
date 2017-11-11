@@ -5,6 +5,8 @@ import pkg_resources
 import jinja2
 from functools import lru_cache
 
+from . import textfn
+
 ######################################################################
 # Resource management
 
@@ -37,6 +39,7 @@ jinja = jinja2.Environment(
     trim_blocks = True,
     lstrip_blocks = True
 )
+jinja.filters['reflow'] = textfn.reflow
 
 ######################################################################
 # Package-wide global variables.
