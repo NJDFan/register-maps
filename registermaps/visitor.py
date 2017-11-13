@@ -11,7 +11,7 @@ from os import makedirs
 import os.path
 import contextlib
 
-from .util import printverbose, ProgramGlobals, resource_bytes, resource_text
+from .util import printverbose, ProgramGlobals, resource_bytes, resource_text, resource_template
 
 class Visitor:
     """An abstract Visitor for working with HtiComponent trees.
@@ -262,13 +262,18 @@ class Visitor:
 
     @classmethod
     def rb(self, resourcename):
-        """Get a binary resource from this resource subfolder."""
+        """Get a binary resource from this resource subdirectory."""
         return resource_bytes('resource/{}/{}'.format(self.outputname, resourcename))
 
     @classmethod
     def rt(self, resourcename):
-        """Get a text resource from this resource subfolder."""
+        """Get a text resource from this resource subdirectory."""
         return resource_text('resource/{}/{}'.format(self.outputname, resourcename))
+       
+    @classmethod
+    def template(self, resourcename):
+        """Get a template resource from this resource subdirectory."""
+        return resource_template('{}/{}'.format(self.outputname, resourcename))
 
     @classmethod
     def preparedir(kls, directory):

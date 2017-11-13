@@ -11,12 +11,12 @@ Objects can be placed into the Space either at defined positions
 or just wherever they'll fit.  For an object to fit at any given
 position, that next object in the space must be no closer than
 the object's size to the position.  If for instance you have a
-Space of size 10
+Space of size 10::
 
     0123456789
     ..........
     
-And place an object A into at position 4 with size 3, you'll have
+And place an object A into at position 4 with size 3, you'll have::
 
     0123456789
     ....AAA...
@@ -24,7 +24,7 @@ And place an object A into at position 4 with size 3, you'll have
 This space now still has room for an object of size <= 4 and an object
 of size <= 3, but cannot hold a larger object anymore.  If you then
 place an object B of size 4 with no guidelines on where to fit it, it
-will fill the first available gap.
+will fill the first available gap::
 
     0123456789
     BBB.AAA...
@@ -42,11 +42,11 @@ class PlacedObject:
     
     Gaps are False, real objects are True.
     
-    Members:
-    obj -   The stored object.  If this object is None, the PlacedObject
+    Attributes:
+        obj (object): The stored object.  If this object is None, the PlacedObject
             represents a gap rather than an object.
-    start - The starting location in the Space.
-    size -  The amount of the Space occupied by the object.
+        start (int): The starting location in the Space.
+        size (int): The amount of the Space occupied by the object.
     """
     
     def __init__(self, obj, start, size):
@@ -430,7 +430,7 @@ class Space:
         start and end object may be truncated such that the start will 
         start at the slice start and the end ends at the slice end.
         
-        Can also be called as space[slc] where slc is a slice.
+        Can also be called as ``space[slc]`` where slc is a slice.
         """
         
         # First, reframe the slice.

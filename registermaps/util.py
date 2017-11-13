@@ -41,6 +41,19 @@ jinja = jinja2.Environment(
 )
 jinja.filters['reflow'] = textfn.reflow
 
+@lru_cache(64)
+def resource_template(resourcename):
+	"""Get a package resource as a Jinja template.
+	
+	Since all of our jinja resources are expected to be under resource/,
+	if that is the first part of the resource name then it is ignored.
+	"""
+	
+	RSC = 'resource/'
+	if resourcename.startswith(RSC):
+		resourcename = resourcename[len(RSC):]
+	return jinja.get_template(resourcename)
+
 ######################################################################
 # Package-wide global variables.
     
@@ -65,14 +78,11 @@ class _Outputs:
     def register(self, kls):
         """Register an output class for the command-line tool.
         
-        Arguments
-        ---------
-            kls: The class of an object to use.
-                The registered name will be taken from the 
-                ``outputname`` member.
+        Args:
+            kls: The class of an object to use.  The registered name will be
+                taken from the :attr:`Visitor.outputname` member.
                 
-        Return
-        ------
+        Return:
             kls, so this can be used as a class decorator.
             
         """
@@ -85,12 +95,10 @@ class _Outputs:
     def docs(self, output):
         """Get the documentation for an output by name.
         
-        Arguments
-        ---------
+        Args:
             output (str): Name of a registered output.
         
-        Returns
-        -------
+        Return:
             Long multi-line str of reSTructuredText.
         """
         return resource_text('resource/{}/README.rst'.format(output))
@@ -98,12 +106,10 @@ class _Outputs:
     def output(self, output):
         """Get the output class for an output by name.
         
-        Arguments
-        ---------
+        Args:
             output (str): Name of a registered output.
         
-        Returns
-        -------
+        Returns:
             Class that can iterate an HtiElement tree.
         """
         return self._outputs[output]
@@ -112,6 +118,6 @@ Outputs = _Outputs()
 __all__ = [
     'Outputs',
     'printverbose', 'ProgramGlobals',
-    'resource_bytes', 'resource_text',
+    'resource_bytes', 'resource_text', 'resource_template'
     '__version__'
 ]

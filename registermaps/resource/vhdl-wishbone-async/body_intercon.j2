@@ -40,7 +40,7 @@ use ieee.std_logic_1164.all;
 
 entity {{ node.name }} is
 	port (
-		-- TODO: User ports
+		-- TODO: User ports (unlikely)
 		
 		-- WISHBONE master interface
 		{% set addrhigh = (node.size - 1).bit_length() - 1 %}
@@ -49,7 +49,7 @@ entity {{ node.name }} is
 		ADR_I : in  std_logic_vector({{ addrhigh }} downto 0);
 		CYC_I : in  std_logic;
 		DAT_I : in  std_logic_vector({{ datahigh }} downto 0);
-		SEL_I : in  std_logic_vector({{ behigh }} downto 0);
+		SEL_I : in  std_logic_vector({{ behigh }} downto 0) := (others := '1');
 		STB_I : in  std_logic;
 		WE_I  : in  std_logic;
 		
@@ -69,10 +69,10 @@ entity {{ node.name }} is
 		{{ name }}_STB_O : out std_logic;
 		{{ name }}_WE_O  : out std_logic;
 		
-		{{ name }}_ACK_I : out std_logic := '0';
-		{{ name }}_DAT_I : out std_logic_vector({{ datahigh }} downto 0) := '0';
-		{{ name }}_ERR_I : out std_logic := '0';
-		{{ name }}_RTY_I : out std_logic := '0';
+		{{ name }}_ACK_I : in  std_logic := '0';
+		{{ name }}_DAT_I : in  std_logic_vector({{ datahigh }} downto 0) := '0';
+		{{ name }}_ERR_I : in  std_logic := '0';
+		{{ name }}_RTY_I : in  std_logic := '0';
 		
 		{% endfor %}
 		
@@ -97,12 +97,12 @@ begin
 	-- MOSI signals
 	{% for c in instances %}
 	{% set name = c.name %}
-	{{ name }}_ADR_O <= ADR_I;
+	{{ name }}_ADR_O <= ADR_I({{ name }}_ADR_O'range);
 	{{ name }}_CYC_O <= CYC_I;
 	{{ name }}_DAT_O <= DAT_I;
 	{{ name }}_SEL_O <= SEL_I;
 	{{ name }}_WE_O  <= WE_I;
-	{{ name }}_STB_O <= STBI when (addr >= {{ c.offset }}) and (addr < {{ c.offset + c.size }}) else '0';
+	{{ name }}_STB_O <= STB_I when (addr >= {{ c.offset }}) and (addr < {{ c.offset + c.size }}) else '0';
 		
 	{% endfor %}
 	

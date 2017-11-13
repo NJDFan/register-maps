@@ -456,12 +456,12 @@ class GenerateFunctionBodies(VhdlVisitor):
         self.print(commentblock('Accessor Functions'))
         self.visitchildren(node)
         
-        self.printf(self.rt('fnbody_component'),
+        self.print(self.template('fnbody_component.j2').render(
             name = node.name,
             updatelines = self._component_update(node),
             updatesiglines = self._component_updatesig(node),
             readlines = self._component_read(node),
-        )
+        ))
 
     def visit_RegisterArray(self, node):
         """Register array access function bodies."""
