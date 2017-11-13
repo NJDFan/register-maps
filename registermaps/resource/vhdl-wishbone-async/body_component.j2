@@ -3,7 +3,7 @@
 WISHBONE (Async) Component Body
 
 Expects:
-	node (Node): The component being generated
+    node (Node): The component being generated
     changes (list): List of 3-element change tuples
     time (datetime): The time of file generation.
 #}
@@ -40,78 +40,101 @@ library ieee;
 use ieee.std_logic_1164.all;
 
 entity {{ node.name }} is
-	port (
-		-- TODO: User ports
-		
-		-- WISHBONE interface
-		{% set addrhigh = (node.size - 1).bit_length() - 1 %}
-		{% set datahigh = node.width - 1 %}
+    port (
+        -- START: User ports
+        -- END: User ports
+        
+        -- WISHBONE interface
+        {% set addrhigh = (node.size - 1).bit_length() - 1 %}
+        {% set datahigh = node.width - 1 %}
         {% set behigh = (node.width // 8) - 1 %}
-		ADR_I : in  std_logic_vector({{ addrhigh }} downto 0);
-		CYC_I : in  std_logic;
-		DAT_I : in  std_logic_vector({{ datahigh }} downto 0);
-		SEL_I : in  std_logic_vector({{ behigh }} downto 0);
-		STB_I : in  std_logic;
-		WE_I  : in  std_logic;
-		
-		ACK_O : out std_logic;
-		DAT_O : out std_logic_vector({{ datahigh }} downto 0);
-		ERR_O : out std_logic;
-		RTY_O : out std_logic;
-		
-		CLK_I : in  std_logic;
-		RST_I : in  std_logic
-	);
+        ADR_I : in  std_logic_vector({{ addrhigh }} downto 0);
+        CYC_I : in  std_logic;
+        DAT_I : in  std_logic_vector({{ datahigh }} downto 0);
+        SEL_I : in  std_logic_vector({{ behigh }} downto 0);
+        STB_I : in  std_logic;
+        WE_I  : in  std_logic;
+        
+        ACK_O : out std_logic;
+        DAT_O : out std_logic_vector({{ datahigh }} downto 0);
+        ERR_O : out std_logic;
+        RTY_O : out std_logic;
+        
+        CLK_I : in  std_logic;
+        RST_I : in  std_logic
+    );
 end entity {{ node.name }};
 
 use work.pkg_{{ node.name }}.all;
 
 architecture Behavioral of {{ node.name }} is
-	
-	-- TODO: Add any local signals here.
-	
+    
+    signal reg : t_{{ node.name }}_regfile := RESET_t_{{ node.name }}_REGFILE;
+    
+    -- START: Add any local signals here.
+    -- END: Add any local signals here.
+    
 begin
-	
-	-- Main bus interface.
-	WISHBONE: process(CLK_I)
-		variable addr : t_addr;
-		variable reg : t_{{ node.name }}_regfile := RESET_t_{{ node.name }}_REGFILE;
-		variable success : boolean;
-		variable rdat : t_busdata;
-	begin
-		wait until rising_edge(CLK_I);
-		ACK_O <= '0';
-		ERR_O <= '0';
-		RTY_O <= '0';
-		DAT_O <= (others => 'X');
-		if (CYC_I = '1' and STB_I = '1') then
-			-- TODO: Update all read-only values in reg here.
-			
-			addr := GET_ADDR(ADR_I);
-			
-			if WE_I = '0' then
-				-- Read processing
-				READ_REGFILE(addr, reg, rdat, success);
-				DAT_O <= rdat;
-			else
-				-- Write processing
-				UPDATE_REGFILE(DAT_I, SEL_I, addr, reg, success);
-			end if;
-			
-			if success then
-				ACK_O <= '1';
-			else
-				ERR_O <= '1';
-			end if;
-		end if;
-		
-		if RST_I = '1' then
-			ACK_O <= '0';
-			ERR_O <= '0';
-			reg := RESET_t_{{ node.name }}_REGFILE;
-		end if;
-		
-		-- TODO: Process any updated values here.
-	end process WISHBONE;
+    
+    -- Asynchronous bus responses, sideeffect free.
+    WB_READ: process(ADR_I, CYC_I, STB_I, WE_I)
+        variable addr : t_addr;
+        variable success : boolean;
+        variable rdat : t_busdata;
+        variable rdat : t_busdata;
+    begin
+        addr := GET_ADDR(ADR_I)
+        if CYC_I = '1' and STB_I = '1' and RST_I = '0' then
+            -- Only perform the read when there's bus activity.
+            if WE_I = '0' then
+                READ_REGFILE(addr, reg, rdat, success);
+                if success then
+                    DAT_O <= rdat;
+                else
+                    DAT_O <= (others => 'X');
+                end if;
+            else
+                success := IS_WRITABLE(addr);
+                DAT_O <= (others => 'X');
+            end if;
+            if success then
+                ACK_O <= '1';
+                ERR_O <= '0';
+            else
+                ACK_O <= '0';
+                ERR_O <= '1';
+            end if;
+            
+        else
+            DAT_O <= (others => 'X');
+            ACK_O <= '0';
+            ERR_O <= '0';
+        end if;
+    end process WB_READ;
+    
+    -- Synchronous bus write.  The WB_READ process already took care
+    -- of the handshake signals.
+    
+    WISHBONE: process(CLK_I)
+        variable addr : t_addr;
+        variable success : boolean;
+    begin
+        if rising_edge(CLK_I) then
+            -- START: Update all read-only values in reg here.
+            -- END: Update all read-only values in reg here.
+            
+            if WE_I = '1' then
+                addr := GET_ADDR(ADR_I);
+                UPDATE_REGFILE_SIG(DAT_I, SEL_I, addr, reg, success);
+            end if;
+        end if;
+        
+        if RST_I = '1' then
+            reg <= RESET_t_{{ node.name }}_REGFILE;
+        end if;
+        
+        -- START: Process any updated values here.
+        -- END: Process any updated values here.
+    end process WISHBONE;
 
 end architecture Behavioral;

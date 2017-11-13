@@ -110,34 +110,34 @@ end procedure READ_{{node.name}};
 
 function {{node.name}}_IS_READABLE(offset : in t_addr) return boolean is
 begin
-	case offset is
-		{% for child, start, size in node.space.items() %}
-		{% if child.isarray %}
-		when {{child.name}}_BASEADDR to {{child.name}}_LASTADDR =>
-			return {{child.name}}_IS_READABLE(offset-{{child.name}}_BASEADDR);
-		{% else %}
-		when {{child.name}}_ADDR => return {{ 'false' if child.writeOnly else 'true' }};
-		{% endif %}
-		{% endfor %}
-		{% if node.space.gapcount %}
-		when others => return false;
-		{% endif %}
-	end case;
+    case offset is
+        {% for child, start, size in node.space.items() %}
+        {% if child.isarray %}
+        when {{child.name}}_BASEADDR to {{child.name}}_LASTADDR =>
+            return {{child.name}}_IS_READABLE(offset-{{child.name}}_BASEADDR);
+        {% else %}
+        when {{child.name}}_ADDR => return {{ 'false' if child.writeOnly else 'true' }};
+        {% endif %}
+        {% endfor %}
+        {% if node.space.gapcount %}
+        when others => return false;
+        {% endif %}
+    end case;
 end function {{node.name}}_IS_READABLE;
 
 function {{node.name}}_IS_WRITEABLE(offset : in t_addr) return boolean is
 begin
-	case offset is
-		{% for child, start, size in node.space.items() %}
-		{% if child.isarray %}
-		when {{child.name}}_BASEADDR to {{child.name}}_LASTADDR =>
-			return {{child.name}}_IS_WRITEABLE(offset-{{child.name}}_BASEADDR);
-		{% else %}
-		when {{child.name}}_ADDR => return {{ 'false' if child.readOnly else 'true' }};
-		{% endif %}
-		{% endfor %}
-		{% if node.space.gapcount %}
-		when others => return false;
-		{% endif %}
-	end case;
+    case offset is
+        {% for child, start, size in node.space.items() %}
+        {% if child.isarray %}
+        when {{child.name}}_BASEADDR to {{child.name}}_LASTADDR =>
+            return {{child.name}}_IS_WRITEABLE(offset-{{child.name}}_BASEADDR);
+        {% else %}
+        when {{child.name}}_ADDR => return {{ 'false' if child.readOnly else 'true' }};
+        {% endif %}
+        {% endfor %}
+        {% if node.space.gapcount %}
+        when others => return false;
+        {% endif %}
+    end case;
 end function {{node.name}}_IS_WRITEABLE;
