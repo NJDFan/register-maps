@@ -17,7 +17,7 @@ HTML documentation, from an XML register description format.
    xml
    outputs
    internals
-   module
+   api/index
    
 
 Indices and tables
