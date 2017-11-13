@@ -3,34 +3,60 @@
 procedure UPDATE_REGFILE(
     dat: in t_busdata; byteen : in std_logic_vector;
     offset: in t_addr;
-    variable reg: inout t_{{name}}_regfile;
+    variable reg: inout t_{{node.name}}_regfile;
     success: out boolean
 ) is
 begin
     success := true;
     case offset is
-{{updatelines}}
+     {% for child, start, size in node.space.items() %}
+      {% if child.isarray and child.readOnly %}
+        when {{child.name}}_BASEADDR to {{child.name}}_LASTADDR => success := false;
+      {% elif child.isarray %}
+        when {{child.name}}_BASEADDR to {{child.name}}_LASTADDR =>
+            UPDATE_{{child.name}}(dat, byteen, offset-{{child.name}}_BASEADDR, reg.{{child.identifier}}, success);
+      {% elif child.readOnly %}
+        when {{child.name}}_ADDR => success := false;
+      {% else %}
+        when {{child.name}}_ADDR => UPDATE_{{child.name}}(dat, byteen, reg.{{child.identifier}});
+      {% endif %}
+     {% endfor %}
+     {% if node.space.gapcount %}
+        when others => return false;
+     {% endif %}
     end case;
 end procedure UPDATE_REGFILE;
 
 procedure UPDATESIG_REGFILE(
     dat: in t_busdata; byteen : in std_logic_vector;
     offset: in t_addr;
-    signal reg: inout t_{{name}}_regfile;
+    signal reg: inout t_{{node.name}}_regfile;
     success: out boolean
 ) is
-    variable varcopy : t_{{name}}_regfile;
 begin
     success := true;
-    varcopy := reg;
     case offset is
-{{updatesiglines}}
+     {% for child, start, size in node.space.items() %}
+      {% if child.isarray and child.readOnly %}
+        when {{child.name}}_BASEADDR to {{child.name}}_LASTADDR => success := false;
+      {% elif child.isarray %}
+        when {{child.name}}_BASEADDR to {{child.name}}_LASTADDR =>
+            UPDATESIG_{{child.name}}(dat, byteen, offset-{{child.name}}_BASEADDR, reg.{{child.identifier}}, success);
+      {% elif child.readOnly %}
+        when {{child.name}}_ADDR => success := false;
+      {% else %}
+        when {{child.name}}_ADDR => UPDATESIG_{{child.name}}(dat, byteen, reg.{{child.identifier}});
+      {% endif %}
+     {% endfor %}
+     {% if node.space.gapcount %}
+        when others => return false;
+     {% endif %}
     end case;
 end procedure UPDATESIG_REGFILE;
 
 procedure READ_REGFILE(
     offset: in t_addr;
-    reg: in t_{{name}}_regfile;
+    reg: in t_{{node.name}}_regfile;
     dat: out t_busdata;
     success: out boolean
 ) is
@@ -38,7 +64,21 @@ begin
     success := true;
     dat := (others => 'X');
     case offset is
-{{readlines}}
+     {% for child, start, size in node.space.items() %}
+      {% if child.isarray and child.writeOnly %}
+        when {{child.name}}_BASEADDR to {{child.name}}_LASTADDR => success := false;
+      {% elif child.isarray %}
+        when {{child.name}}_BASEADDR to {{child.name}}_LASTADDR =>
+            READ_{{child.name}}(offset-{{child.name}}_BASEADDR, reg.{{child.identifier}}, dat, success);
+      {% elif child.writeOnly %}
+        when {{child.name}}_ADDR => success := false;
+      {% else %}
+        when {{child.name}}_ADDR => dat := {{child.name}}_TO_DAT(reg.{{child.identifier}});
+      {% endif %}
+     {% endfor %}
+     {% if node.space.gapcount %}
+        when others => return false;
+     {% endif %}
     end case;
 end procedure READ_REGFILE;
 

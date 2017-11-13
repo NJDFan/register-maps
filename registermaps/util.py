@@ -1,5 +1,6 @@
 import importlib
 import io
+import os.path
 import sys
 import pkg_resources
 import jinja2
@@ -67,6 +68,45 @@ def printverbose(*args, **kwargs):
     if ProgramGlobals['verbose']:
         kwargs.setdefault('file', sys.stderr)
         print(*args, **kwargs)
+
+######################################################################
+# Output destinations
+
+class _BaseOutputDestination:
+    def open(self, *args, **kwargs):
+        raise NotImplementedError
+    
+    @property
+    def stream(self):
+        raise NotImplementedError
+
+class TextOutput(_BaseOutputDestination):
+    def __init__(self, filehandle):
+        self.stream = filehandle
+
+class DirOutput(_BaseOutputDestination):
+    def __init__(self, dir):
+        self.dir = dir
+        
+    def open(self, filename, *args, **kwargs):
+        fn = os.path.join(self.dir, filename)
+        return TextOutput(open(fn, *args, **kwargs))
+        
+class StdOutput(_BaseOutputDestination):
+    def open(self, *args, **kwargs):
+        return self
+        
+    @property
+    def stream(self):
+        return sys.stdout
+        
+class StringOutput(_BaseOutputDestination):
+    def __init__(self):
+        self.stream = io.StringIO()
+        
+    @property
+    def str(self):
+        return self.stream.getvalue()
 
 ######################################################################
 # Output class registration.

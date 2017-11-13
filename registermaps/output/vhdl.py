@@ -355,96 +355,8 @@ class GenerateFunctionDeclarations(VhdlVisitor):
         # Register access functions
         self.printf(self.rt('fndecl_register'), name=node.name)
         
-class _fnbodyrecord:
-    """
-    Supports GenerateFunctionBodies by creating the "when" block
-    inside of a case statement.
-    
-    String template arguments are for use with the format statement and will
-    be passed the following keyword format elements:
-        node
-            The parent node
-        child
-            Each child node
-    
-    Args
-    ----
-        Register (str): String template to use for Register children
-        RegisterArray (str): String template to use for RegisterArray children
-        others (str): String template to use when lookup fails
-        skipontrue (str): Fallback to others if 'readOnly' or 'writeOnly' is true.
-        indent (int): Number of spaces to indent each line by.  Default is 8
-        
-    Returns
-    -------
-        A callable that turns a node into a multiline text block that can be
-        inserted into the VHDL procedure, inside the case statement.
-    """
-    
-    def __init__(self, Register, RegisterArray,
-        others = "when others => success := false;",
-        skipontrue = 'readOnly',
-        indent=8):
-        
-        self.Register = dedent(Register).strip()
-        self.RegisterArray = dedent(RegisterArray).strip()
-        self.others = others
-        self.skipontrue = skipontrue
-        self.indent = 8
-        
-    def __call__(self, node):
-        whenlines = []
-        gaps = False
-        for obj, _, _ in node.space:
-            # Is this a thing we can't write to?
-            if (not obj) or getattr(obj, self.skipontrue):
-                gaps = True
-                continue
-            
-            try:
-                line = getattr(self, type(obj).__name__)
-            except AttributeError:
-                raise ValueError('Child node {}: {} of {} {}'.format(
-                    type(obj).__name__, obj.name,
-                    type(node).__name__, node.name
-                ))
-            whenlines.append(line.format(node=node, child=obj))
-            
-        # Put an others line on if the case wasn't filled.
-        if gaps:
-            whenlines.append(self.others.format(node=node))
-            
-        # Indent all those lines and slam them together into a multi-line block.
-        return textwrap.indent(
-            '\n'.join(whenlines),
-            ' ' * self.indent
-        )
-        
 class GenerateFunctionBodies(VhdlVisitor):
     """Print function bodies for the package body."""
-    
-    _component_update = _fnbodyrecord(
-        Register = "when {child.name}_ADDR => UPDATE_{child.name}(dat, byteen, reg.{child.identifier});",
-        RegisterArray = """
-            when {child.name}_BASEADDR to {child.name}_LASTADDR =>
-                UPDATE_{child.name}(dat, byteen, offset-{child.name}_BASEADDR, reg.{child.identifier}, success);
-            """
-    )   
-    _component_updatesig = _fnbodyrecord(
-        Register = "when {child.name}_ADDR => UPDATESIG_{child.name}(dat, byteen, reg.{child.identifier});",
-        RegisterArray = """
-            when {child.name}_BASEADDR to {child.name}_LASTADDR =>
-                UPDATESIG_{child.name}(dat, byteen, offset-{child.name}_BASEADDR, reg.{child.identifier}, success);
-            """
-    )
-    _component_read = _fnbodyrecord(
-        Register = "when {child.name}_ADDR => dat := {child.name}_TO_DAT(reg.{child.identifier});",
-        RegisterArray = """
-            when {child.name}_BASEADDR to {child.name}_LASTADDR =>
-                READ_{child.name}(offset-{child.name}_BASEADDR, reg.{child.identifier}, dat, success);
-            """,
-        skipontrue = 'writeOnly'
-    )
     
     def visit_Component(self, node):
         """Print all function bodies for the Component"""
@@ -456,13 +368,9 @@ class GenerateFunctionBodies(VhdlVisitor):
         self.print(commentblock('Accessor Functions'))
         self.visitchildren(node)
         
-        self.print(self.template('fnbody_component.j2').render(
-            node = node,
-            name = node.name,
-            updatelines = self._component_update(node),
-            updatesiglines = self._component_updatesig(node),
-            readlines = self._component_read(node),
-        ))
+        self.print(
+            self.template('fnbody_component.j2').render(node = node)
+        )
 
     def visit_RegisterArray(self, node):
         """Register array access function bodies."""
