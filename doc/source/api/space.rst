@@ -9,6 +9,7 @@ The Space Container
 
 .. autoclass:: registermaps.space.Space
    :members:
+   :special-members:
    
 .. autoclass:: registermaps.space.PlacedObject
    :members:
