@@ -185,6 +185,7 @@ class HtiElement():
     # Overload as needed
     textasdesc = True
     ischild = True
+    isarray = False
     
     def __init__(self, xml_element, parent=None, sourcefile='unknown file'):
         """Derive an HtiElement from an XML element.
@@ -434,7 +435,10 @@ class Component(HtiElement):
         'writeOnly' : tf,
         '{http://www.w3.org/2001/XMLSchema-instance}noNamespaceSchemaLocation' : str
     }
-    defaults = {}
+    defaults = {
+        'readOnly' : False,
+        'writeOnly' : False
+    }
     
     space_placer = space.BinaryPlacer
     
@@ -570,6 +574,8 @@ class _Array(HtiElement):
         'name' : str,
         'framesize' : toint,
     }
+    
+    isarray = True
     
     def afterchildren(self):
         if self.framesize is None:

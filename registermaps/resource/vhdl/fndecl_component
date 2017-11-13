@@ -13,3 +13,5 @@ procedure READ_REGFILE(
 	reg: in t_{name}_regfile;
 	dat: out t_busdata;
 	success: out boolean);
+function IS_READABLE(offset: in t_addr) return boolean;
+function IS_WRITEABLE(offset: in t_addr) return boolean;

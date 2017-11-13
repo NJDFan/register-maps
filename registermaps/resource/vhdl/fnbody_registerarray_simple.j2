@@ -61,3 +61,13 @@ begin
     success := true;
  {% endif %}
 end procedure READ_{{node.name}};
+
+function {{node.name}}_IS_READABLE(offset : in t_addr) return boolean is
+begin
+    return {{ 'false' if node.writeOnly else 'true' }};
+end function {{node.name}}_IS_READABLE;
+
+function {{node.name}}_IS_WRITEABLE(offset : in t_addr) return boolean is
+begin
+    return {{ 'false' if node.readOnly else 'true' }};
+end function {{node.name}}_IS_WRITEABLE;

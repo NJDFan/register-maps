@@ -457,6 +457,7 @@ class GenerateFunctionBodies(VhdlVisitor):
         self.visitchildren(node)
         
         self.print(self.template('fnbody_component.j2').render(
+            node = node,
             name = node.name,
             updatelines = self._component_update(node),
             updatesiglines = self._component_updatesig(node),
