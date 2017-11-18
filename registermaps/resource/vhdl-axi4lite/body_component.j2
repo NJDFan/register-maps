@@ -41,13 +41,6 @@ architecture Behavioral of {{node.name}}_axi4lite is
 
 	signal reg : t_{{node.name}}_regfile := RESET_t_{{node.name}}_REGFILE;
 	
-	signal write_addr : t_addr;
-	signal wa_good    : boolean;
-	signal write_data : t_busdata;
-	signal write_strb : std_logic_vector({{behigh}} downto 0);
-	signal wd_good    : boolean;
-	signal bhold : boolean;
-	
 	constant RESP_OKAY		: std_logic_vector(1 downto 0) := "00";
 	constant RESP_EXOKAY	: std_logic_vector(1 downto 0) := "01";
 	constant RESP_SLVERR	: std_logic_vector(1 downto 0) := "10";
@@ -60,108 +53,124 @@ architecture Behavioral of {{node.name}}_axi4lite is
 		end if;
 	end function SL;
 	
+	type t_readstate is (IDLE, RESPONDING);
+	type t_writestate is (IDLE, WRITING, RESPONDING);
+	
 begin
 
-	-- Manage bus reads.  Reads support 1 in the pipeline, allowing a new
-	-- read to be accepted before the read data from the previous has been.
+	-- Manage bus reads. The read data must be accepted before the
+	-- next read request can be handled.
+	--
 	AXI_READ: process(ACLK)
 		variable addr		: t_addr;
 		variable dat		: t_busdata;
-		variable replying	: boolean;
 		variable success	: boolean; 
 		
-		variable ondeck: boolean;
-		variable ondeck_dat  : t_busdata;
-		variable ondeck_resp : std_logic_vector(1 downto 0);
+		variable local : t_{{node.name}}_regfile;
+		variable state : t_readstate;
 	begin
 		if rising_edge(ACLK) then
-			-- First try to clear the pending read reply.
-			if RREADY = '1' then
-				replying := false;
-			end if;
-		
-			-- Read the data into the ondeck space.
-			if (not ondeck) and (ARVALID = '1') then
-				addr := GET_ADDR(ARADDR);
-				READ_REGFILE(addr, reg, dat, success);
-				
-				ondeck := true;
-				ondeck_dat := dat;
-				if success then ondeck_resp := RESP_OKAY;
-				else            ondeck_resp := RESP_SLVERR;
-				end if;
-			end if;
+			case state is
+				when IDLE =>
+					-- Hang out waiting for a read request.
+					RDATA <= (others => 'X');
+					if ARVALID = '1' then
+						local := reg;
+						
+						-- START: Update the local register file for read-only data.
+						-- END:   Update the local register file for read-only data. 
+						
+						addr  := GET_ADDR(ARADDR);
+						READ_REGFILE(addr, local, dat, success);
+						
+						state := RESPONDING;
+						if success then
+							RDATA <= dat;
+							RRESP <= RESP_OKAY;
+						else
+							RRESP <= RESP_SLVERR;
+						end if;
+					end if;
+					
+				when RESPONDING =>
+					-- Hold off accepting more reads until the 
+					-- current read response has been accepted.
+					if RREADY = '1' then
+						state := IDLE;
+					end if;
+			end case;
 			
-			-- And pass it forward to the reply exchanger when possible.
-			if not replying then
-				RDATA <= ondeck_dat;
-				RRESP <= ondeck_resp;
-				replying := ondeck;
-				ondeck := false;
-			end if;
+			ARREADY <= SL(state = IDLE);
+			RVALID  <= SL(state = RESPONDING);
 			
-			-- Manage the status flags.
-			RVALID  <= SL(replying);
-			ARREADY <= SL(not ondeck);
-			
-			-- And manage reset.
+			-- Manage reset.
 			if ARESETn = '0' then
-				replying := false;
-				ondeck := false;
-				RVALID  <= '0';
+				state := IDLE;
 				ARREADY <= '0';
+				RVALID  <= '0';
 			end if;
 		end if;
 	end process AXI_READ;
 	
-	-- Manage writes.  Writes support 1 in pipeline support in case acceptance
-	-- is slow, but take a clock after both address and data become valid to
-	-- execute.
+	-- Manage writes. To save registers, writes are only accepted when
+	-- both the data and the address have gone valid.
+	
 	AXI_WRITE: process(ACLK)
-		variable ready		: boolean;
-		variable replying	: boolean;
 		variable success	: boolean; 
+		variable state		: t_writestate;
 		
-		variable ondeck: boolean;
-		variable ondeck_resp : std_logic_vector(1 downto 0);
 	begin
 		if rising_edge(ACLK) then
-			-- First try to clear the pending B reply.
-			if BREADY = '1' then
-				replying := false;
-			end if;
+			case state is
+				when IDLE =>
+					-- Wait until we have a complete transaction
+					-- ready to go.
+					if AWVALID = '1' and WVALID = '1' then
+						state := WRITING;
+					end if;
+					
+				when WRITING =>
+					-- Write takes effect in one cycle.
+					addr := GET_ADDR(AWADDR);
+					UPDATESIG_REGFILE(WDATA, WSTRB, addr, reg, success);
+					
+					-- START: Effect on write behavior here.
+					-- END:   Effect on write behavior here.
+					
+					if success then
+						BRESP <= RESP_OKAY;
+					else
+						BRESP <= RESP_SLVERR;
+					end if;
+					
+					state := RESPONDING;
+					
+				when RESPONDING =>
+					-- Wait until the response is accepted before
+					-- we acknowledge more writes.  In the interest
+					-- of saving a cycle, we will allow a transition
+					-- directly to WRITING from here.
+					
+					if BREADY = '1' then
+						if AWVALID = '1' and WVALID = '1' then
+							state := WRITING;
+						else
+							state := IDLE;
+						end if;
+					end if;
+			end case;
 			
-			-- Process the new write.
-			if (not ondeck) and ((AWVALID and WVALID)='1') and (not ready) then
-				ready := true;
-				UPDATESIG_REGFILE(WDATA, WSTRB, GET_ADDR(AWADDR), reg, success);
-	
-				ondeck := true;
-				if success then ondeck_resp := RESP_OKAY;
-				else            ondeck_resp := RESP_SLVERR;
-				end if;
-			else
-				ready := false;
-			end if;
-			
-			-- And pass it forward to the reply exchanger when possible.
-			if not replying then
-				BRESP <= ondeck_resp;
-				replying := ondeck;
-				ondeck := false;
-			end if;
-			
-			-- And manage reset.
+			-- Manage reset.
 			if ARESETn = '0' then
-				replying := false;
-				ondeck   := false;
-				ready    := false;
 				reg <= RESET_t_{{node.name}}_REGFILE;
+				state := IDLE;
+				ARREADY <= '0';
+				RVALID  <= '0';
 			end if;
 			
-			AWREADY <= SL(ready);
-			WREADY  <= SL(ready);
-			BVALID  <= SL(replying);
+			AWREADY <= SL(state = WRITING);
+			WREADY  <= SL(state = WRITING);
+			BVALID  <= SL(state = RESPONDING);
 		end if;
 	end process AXI_WRITE;
 	
