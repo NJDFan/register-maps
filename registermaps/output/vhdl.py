@@ -663,12 +663,9 @@ class VhdlAxi4Lite(Visitor):
         addrhigh = (node.size - 1).bit_length() - 1
         datahigh = node.width - 1
         behigh = (node.width // 8) - 1
-        self.printf(self.rt('body_component'),
-            name = node.name,
-            addrhigh = addrhigh,
-            behigh = behigh,
-            datahigh = datahigh
-        )
+        self.print(jinja.get_template('vhdl-axi4lite/body_component.j2').render(
+            node = node,
+        ))
         
     def visit_MemoryMap(self, node):
         pass

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<component	name="CONTROL" width="32"
+			xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+			xsi:noNamespaceSchemaLocation="../schema/hti_component.xsd">
+			
+    <desc>
+	Control register for each of the 64 i/o channels
+	</desc>
+	
+	
+	<registerarray name="CONTROL" count ="64" framesize="0x1" offset="0">
+        <desc> Control channel registers </desc>
+            <register name="CTLn"  width="16">
+				<desc>Control register for channel N.</desc>
+				<field name="MODE" offset="0" size="1">
+					<desc>Set to 1 for output; 0 is input.</desc>
+				</field>
+				<field name="DEBOUNCE" offset="4" size="2" reset="M1">
+					<desc>Controls input debounce timing.</desc>
+					<enum name="OFF" value="0"> <desc>No extra debounce.</desc></enum>
+					<enum name="M1" value="1"><desc>1 ms debounce.</desc></enum>
+					<enum name="M10" value="2"><desc>10 ms debounce.</desc></enum>
+					<enum name="M100" value="3"><desc>100 ms debounce.</desc></enum>
+				</field>
+            </register>
+    </registerarray>
+    
+
+
+</component>
