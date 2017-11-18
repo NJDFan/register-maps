@@ -190,7 +190,7 @@ class GenerateAddressConstants(VhdlVisitor):
         pass
         
     def printaddress(self, name, val):
-        self.printf('constant {}: t_addr := {};', name, val)
+        self.printf('constant {}: natural := {};', name, val)
 
 class GenerateTypes(VhdlVisitor):
     """Go through the HtiComponent tree generating register types.

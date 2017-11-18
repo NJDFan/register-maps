@@ -116,6 +116,7 @@ begin
 	-- both the data and the address have gone valid.
 	
 	AXI_WRITE: process(ACLK)
+		variable addr		: t_addr;
 		variable success	: boolean; 
 		variable state		: t_writestate;
 		
