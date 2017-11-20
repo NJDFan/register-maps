@@ -261,10 +261,6 @@ class Visitor:
             delattr(self, k)
 
     @classmethod
-    def preparedir(kls, directory):
-        pass
-
-    @classmethod
     def rb(self, resourcename):
         """Get a binary resource from this resource subfolder."""
         return resource_bytes('resource/{}/{}'.format(self.outputname, resourcename))

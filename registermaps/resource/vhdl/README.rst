@@ -16,7 +16,7 @@ Changed **names** indicate characters that were not legal VHDL, and will be
 different in all contexts, illegal characters will be replaced with _ characters.
 
 Changed **identifiers** mean only that they cannot be bare words, which means
-they are only different in the context of something.*identifier*, such as 
+they are only different in the context of something.identifier, such as 
 registers in components or fields in registers.  Changed identifiers will get
 an "_0" extension.
 

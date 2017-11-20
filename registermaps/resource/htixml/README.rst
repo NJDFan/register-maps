@@ -3,7 +3,7 @@ Highland XML
 ============
 
 The Highland XML output format is the same as the Highland XML input format.
-This means that the directory generated from the *xml.hti* format is usable
+This means that the directory generated from the *htixml* format is usable
 as input for subsequent program invocations.
 
 Because the placement algorithms are stable, there is no need to do this just
