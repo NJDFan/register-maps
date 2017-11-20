@@ -1,0 +1,178 @@
+library ieee;
+use ieee.std_logic_1164.all;
+use ieee.numeric_std.all;
+
+use work.pkg_{{node.name}}.all;
+
+{% set addrhigh=(node.size-1).bit_length()-1 %}
+{% set behigh=(node.width//8)-1 %}
+entity {{node.name}}_axi4lite is
+	port (
+		AWADDR	: in  std_logic_vector({{addrhigh}} downto 0);
+		AWPROT	: in  std_logic_vector(2 downto 0);
+		AWVALID	: in  std_logic;
+		AWREADY	: out std_logic;
+		
+		WDATA	: in  t_busdata;
+		WSTRB	: in  std_logic_vector({{behigh}} downto 0);
+		WVALID	: in  std_logic;
+		WREADY	: out std_logic;
+		
+		BRESP	: out std_logic_vector(1 downto 0);
+		BVALID	: out std_logic;
+		BREADY	: in  std_logic;
+		
+		ARADDR	: in  std_logic_vector({{addrhigh}} downto 0);
+		ARPROT	: in  std_logic_vector(2 downto 0);
+		ARVALID	: in  std_logic;
+		ARREADY	: out std_logic;
+		
+		RDATA	: out t_busdata;
+		RRESP	: out std_logic_vector(1 downto 0);
+		RVALID	: out std_logic;
+		RREADY	: in  std_logic;
+		
+		ACLK	: in  std_logic;
+		ARESETn	: in  std_logic
+	);
+end entity {{node.name}}_axi4lite;
+
+architecture Behavioral of {{node.name}}_axi4lite is
+
+	signal reg : t_{{node.name}}_regfile := RESET_t_{{node.name}}_REGFILE;
+	
+	constant RESP_OKAY		: std_logic_vector(1 downto 0) := "00";
+	constant RESP_EXOKAY	: std_logic_vector(1 downto 0) := "01";
+	constant RESP_SLVERR	: std_logic_vector(1 downto 0) := "10";
+	constant RESP_DECERR	: std_logic_vector(1 downto 0) := "11";
+	
+	function SL(x : boolean) return std_logic is
+	begin
+		if x then return '1';
+		else return '0';
+		end if;
+	end function SL;
+	
+	type t_readstate is (IDLE, RESPONDING);
+	type t_writestate is (IDLE, WRITING, RESPONDING);
+	
+begin
+
+	-- Manage bus reads. The read data must be accepted before the
+	-- next read request can be handled.
+	--
+	AXI_READ: process(ACLK)
+		variable addr		: t_addr;
+		variable dat		: t_busdata;
+		variable success	: boolean; 
+		
+		variable local : t_{{node.name}}_regfile;
+		variable state : t_readstate;
+	begin
+		if rising_edge(ACLK) then
+			case state is
+				when IDLE =>
+					-- Hang out waiting for a read request.
+					RDATA <= (others => 'X');
+					if ARVALID = '1' then
+						local := reg;
+						
+						-- START: Update the local register file for read-only data.
+						-- END:   Update the local register file for read-only data. 
+						
+						addr  := GET_ADDR(ARADDR);
+						READ_REGFILE(addr, local, dat, success);
+						
+						state := RESPONDING;
+						if success then
+							RDATA <= dat;
+							RRESP <= RESP_OKAY;
+						else
+							RRESP <= RESP_SLVERR;
+						end if;
+					end if;
+					
+				when RESPONDING =>
+					-- Hold off accepting more reads until the 
+					-- current read response has been accepted.
+					if RREADY = '1' then
+						state := IDLE;
+					end if;
+			end case;
+			
+			ARREADY <= SL(state = IDLE);
+			RVALID  <= SL(state = RESPONDING);
+			
+			-- Manage reset.
+			if ARESETn = '0' then
+				state := IDLE;
+				ARREADY <= '0';
+				RVALID  <= '0';
+			end if;
+		end if;
+	end process AXI_READ;
+	
+	-- Manage writes. To save registers, writes are only accepted when
+	-- both the data and the address have gone valid.
+	
+	AXI_WRITE: process(ACLK)
+		variable addr		: t_addr;
+		variable success	: boolean; 
+		variable state		: t_writestate;
+		
+	begin
+		if rising_edge(ACLK) then
+			case state is
+				when IDLE =>
+					-- Wait until we have a complete transaction
+					-- ready to go.
+					if AWVALID = '1' and WVALID = '1' then
+						state := WRITING;
+					end if;
+					
+				when WRITING =>
+					-- Write takes effect in one cycle.
+					addr := GET_ADDR(AWADDR);
+					UPDATESIG_REGFILE(WDATA, WSTRB, addr, reg, success);
+					
+					-- START: Effect on write behavior here.
+					-- END:   Effect on write behavior here.
+					
+					if success then
+						BRESP <= RESP_OKAY;
+					else
+						BRESP <= RESP_SLVERR;
+					end if;
+					
+					state := RESPONDING;
+					
+				when RESPONDING =>
+					-- Wait until the response is accepted before
+					-- we acknowledge more writes.  In the interest
+					-- of saving a cycle, we will allow a transition
+					-- directly to WRITING from here.
+					
+					if BREADY = '1' then
+						if AWVALID = '1' and WVALID = '1' then
+							state := WRITING;
+						else
+							state := IDLE;
+						end if;
+					end if;
+			end case;
+			
+			-- Manage reset.
+			if ARESETn = '0' then
+				reg <= RESET_t_{{node.name}}_REGFILE;
+				state := IDLE;
+				ARREADY <= '0';
+				RVALID  <= '0';
+			end if;
+			
+			AWREADY <= SL(state = WRITING);
+			WREADY  <= SL(state = WRITING);
+			BVALID  <= SL(state = RESPONDING);
+		end if;
+	end process AXI_WRITE;
+	
+end architecture Behavioral;
