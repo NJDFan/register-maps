@@ -34,6 +34,7 @@ class Visitor:
     Create an instance of the Visitor, then call .execute on the start node.
     Return value is the return value of Visitor.finish, which will usually
     be None.
+    
     """
     
     binary = False

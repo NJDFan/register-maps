@@ -362,7 +362,7 @@ class GenerateFunctionBodies(VhdlVisitor):
         """Print all function bodies for the Component"""
         
         self.print(commentblock('Address Grabbers'))
-        maxaddr = (node.size * node.width // 8) - 1
+        maxaddr = node.size - 1
         self.printf(self.rt('fnbody_address'), high=maxaddr.bit_length()-1)
         
         self.print(commentblock('Accessor Functions'))
