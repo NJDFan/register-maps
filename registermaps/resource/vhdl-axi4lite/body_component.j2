@@ -4,6 +4,7 @@ use ieee.numeric_std.all;
 
 use work.pkg_{{node.name}}.all;
 
+{% set datahigh=(node.width-1) %}
 {% set addrhigh=(node.size-1).bit_length()-1 %}
 {% set behigh=(node.width//8)-1 %}
 entity {{node.name}}_axi4lite is
@@ -13,7 +14,7 @@ entity {{node.name}}_axi4lite is
 		AWVALID	: in  std_logic;
 		AWREADY	: out std_logic;
 		
-		WDATA	: in  t_busdata;
+		WDATA	: in  std_logic_vector({{datahigh}} downto 0);
 		WSTRB	: in  std_logic_vector({{behigh}} downto 0);
 		WVALID	: in  std_logic;
 		WREADY	: out std_logic;
@@ -27,7 +28,7 @@ entity {{node.name}}_axi4lite is
 		ARVALID	: in  std_logic;
 		ARREADY	: out std_logic;
 		
-		RDATA	: out t_busdata;
+		RDATA	: out std_logic_vector({{datahigh}} downto 0);
 		RRESP	: out std_logic_vector(1 downto 0);
 		RVALID	: out std_logic;
 		RREADY	: in  std_logic;
@@ -56,7 +57,14 @@ architecture Behavioral of {{node.name}}_axi4lite is
 	type t_readstate is (IDLE, RESPONDING);
 	type t_writestate is (IDLE, WRITING, RESPONDING);
 	
+	-- START: User-logic functions, signals, etc.
+	-- END:   User-logic functions, signals, etc.
+	
 begin
+
+	--------------------------------------------------------------------------
+	-- AXI Bus Interfaces
+	--------------------------------------------------------------------------
 
 	-- Manage bus reads. The read data must be accepted before the
 	-- next read request can be handled.
@@ -175,4 +183,11 @@ begin
 		end if;
 	end process AXI_WRITE;
 	
+	--------------------------------------------------------------------------
+	-- Actual Work
+	--------------------------------------------------------------------------
+	
+	-- START: User logic goes here
+	-- END:   User logic goes here.
+
 end architecture Behavioral;
