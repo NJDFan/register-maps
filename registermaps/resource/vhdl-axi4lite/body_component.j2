@@ -5,10 +5,14 @@ use ieee.numeric_std.all;
 use work.pkg_{{node.name}}.all;
 
 {% set datahigh=(node.width-1) %}
-{% set addrhigh=(node.size-1).bit_length()-1 %}
 {% set behigh=(node.width//8)-1 %}
+{% set addrlsbs=behigh.bit_length() %}
+{% set addrhigh=(node.size-1).bit_length()-1+addrlsbs %}
 entity {{node.name}}_axi4lite is
 	port (
+		-- AXI bus addresses are byte-oriented, and unaligned transfers
+		-- appear on both the address LSBs and (for writes) the WSTRB.
+		--
 		AWADDR	: in  std_logic_vector({{addrhigh}} downto 0);
 		AWPROT	: in  std_logic_vector(2 downto 0);
 		AWVALID	: in  std_logic;
@@ -88,7 +92,7 @@ begin
 						-- START: Update the local register file for read-only data.
 						-- END:   Update the local register file for read-only data. 
 						
-						addr  := GET_ADDR(ARADDR);
+						addr  := GET_ADDR(ARADDR({{addrhigh}} downto {{addrlsbs}}));
 						READ_REGFILE(addr, local, dat, success);
 						
 						state := RESPONDING;
@@ -140,7 +144,7 @@ begin
 					
 				when WRITING =>
 					-- Write takes effect in one cycle.
-					addr := GET_ADDR(AWADDR);
+					addr := GET_ADDR(AWADDR({{addrhigh}} downto {{addrlsbs}}));
 					UPDATESIG_REGFILE(WDATA, WSTRB, addr, reg, success);
 					
 					-- START: Effect on write behavior here.
@@ -169,12 +173,13 @@ begin
 					end if;
 			end case;
 			
+			-- START: Other updates to the register file
+			-- END:   Other updates to the register file
+			
 			-- Manage reset.
 			if ARESETn = '0' then
 				reg <= RESET_t_{{node.name}}_REGFILE;
 				state := IDLE;
-				ARREADY <= '0';
-				RVALID  <= '0';
 			end if;
 			
 			AWREADY <= SL(state = WRITING);
