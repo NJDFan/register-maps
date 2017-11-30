@@ -590,6 +590,8 @@ class VhdlWishboneAsync(Visitor):
     extension = '.vhd'
     encoding = 'iso-8859-1'
     
+    body_component = 'vhdl-wishbone-async/body_component.j2'
+
     def begin(self, startnode):
         changer = FixReservedWords()
         self.changed_nodes = changer.execute(startnode)
@@ -601,7 +603,7 @@ class VhdlWishboneAsync(Visitor):
     def visit_Component(self, node):
         """Create a VHDL template file for a Component."""
         
-        body = jinja.get_template('vhdl-wishbone-async/body_component.j2')
+        body = jinja.get_template(self.body_component)
         self.print(body.render(
             node = node,
             changes = self.changed_nodes,
@@ -633,3 +635,16 @@ class VhdlWishboneAsync(Visitor):
 
     def visit_Instance(self, node):
         self.instances.append(node)
+
+@Outputs.register
+class VhdlWishboneRegistere(VhdlWishboneAsync):
+    """VHDL component with a registered turnaround WISHBONE interface.
+    
+    The code generated is meant as template code to be user-modified.
+    """
+    
+    outputname = 'vhdl-wishbone'
+    extension = '.vhd'
+    encoding = 'iso-8859-1'
+    
+    body_component = 'vhdl-wishbone/body_component.j2'

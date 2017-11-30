@@ -1,6 +1,6 @@
 {# body_intercon.j2
 
-WISHBONE (Async) Component Body
+WISHBONE Interconnect
 
 Expects:
     node (Node): The component being generated
@@ -11,8 +11,28 @@ Expects:
 {% filter reflow(width = 76, indent = '--  ') %}
 {{ node.name }} WISHBONE INTERCON
 
+Implements the {{ node.name }} MemoryMap as a WISHBONE B4 interconnect.  All
+B4 signals are supported through the INTERCON, though the following signals
+are optional for both master and slave interfaces:
 
-Implements the {{ node.name }} MemoryMap as a WISHBONE B4 asyncronous interconnect.
+
+======  ==================================  ===========
+
+BTE     Burst type extension                (M -> S)
+
+CTI     Cycle type extension                (M -> S)
+
+ERR     Bus error strobe                    (M <- S)
+
+LOCK    Uninterrupible cycle indicator      (M -> S)
+
+RTY     Bus retry strobe                    (M <- S)
+
+SEL     Byte lane selects                   (M -> S)
+
+STALL   Registered feedback stall request   (M <- S)
+
+======  ==================================  ===========
 
 
 {% for d in node.description %}
@@ -40,83 +60,105 @@ use ieee.std_logic_1164.all;
 
 entity {{ node.name }} is
     port (
-        -- TODO: User ports (unlikely)
+        -- START: User ports (unlikely)
+        -- END:   User ports (unlikely)
         
         -- WISHBONE slave interfaces
-        {% for c in instances %}
+      {% for c in instances %}
         {% set name = c.name %}
-        {% set addrhigh = (c.binding.size - 1).bit_length() - 1 %}
-        {{ name }}_ADR_O : out std_logic_vector({{ addrhigh }} downto 0);
-        {{ name }}_CYC_O : out std_logic;
-        {{ name }}_DAT_O : out std_logic_vector({{ datahigh }} downto 0);
-        {{ name }}_SEL_O : out std_logic_vector({{ behigh }} downto 0);
-        {{ name }}_STB_O : out std_logic;
-        {{ name }}_WE_O  : out std_logic;
+        {% set addrlsbs = ((c.binding.width // 8)-1).bit_length() %}
+        {% set addrhigh = (c.binding.size - 1).bit_length() - 1 + addrlsbs %}
+        {{ name }}_ACK_I    : in  std_logic;
+        {{ name }}_ADR_O    : out std_logic_vector({{ addrhigh }} downto {{ addrlsbs }});
+        {{ name }}_BTE_O    : out std_logic_vector(1 downto 0);
+        {{ name }}_CTI_O    : out std_logic_vector(2 downto 0);
+        {{ name }}_CYC_O    : out std_logic;
+        {{ name }}_DAT_I    : in  std_logic_vector({{ datahigh }} downto 0) := 'X';
+        {{ name }}_DAT_O    : out std_logic_vector({{ datahigh }} downto 0);
+        {{ name }}_ERR_I    : in  std_logic := '0';
+        {{ name }}_LOCK_O   : out std_logic;
+        {{ name }}_RTY_I    : in  std_logic := '0';
+        {{ name }}_SEL_O    : out std_logic_vector({{ behigh }} downto 0);
+        {{ name }}_STALL_I  : in  std_logic := '0';
+        {{ name }}_STB_O    : out std_logic;
+        {{ name }}_WE_O     : out std_logic;
         
-        {{ name }}_ACK_I : in  std_logic := '0';
-        {{ name }}_DAT_I : in  std_logic_vector({{ datahigh }} downto 0) := '0';
-        {{ name }}_ERR_I : in  std_logic := '0';
-        {{ name }}_RTY_I : in  std_logic := '0';
-        
-        {% endfor %}
+      {% endfor %}
         
         -- WISHBONE master interface
-        {% set addrhigh = (node.size - 1).bit_length() - 1 %}
+        {% set addrlsbs = ((datawidth // 8)-1).bit_length() %}
+        {% set addrhigh = (node.size - 1).bit_length() - 1 + addrlsbs %}
         {% set datahigh = datawidth - 1 %}
         {% set behigh = (datawidth // 8) - 1 %}
-        ADR_I : in  std_logic_vector({{ addrhigh }} downto 0);
-        CYC_I : in  std_logic;
-        DAT_I : in  std_logic_vector({{ datahigh }} downto 0);
-        SEL_I : in  std_logic_vector({{ behigh }} downto 0) := (others := '1');
-        STB_I : in  std_logic;
-        WE_I  : in  std_logic;
-        
-        ACK_O : out std_logic;
-        DAT_O : out std_logic_vector({{ datahigh }} downto 0);
-        ERR_O : out std_logic;
-        RTY_O : out std_logic
+        ACK_O   : out std_logic;
+        ADR_I   : in  std_logic_vector({{ addrhigh }} downto {{ addrlsbs }});
+        BTE_I   : in  std_logic_vector(1 downto 0) := "XX";
+        CTI_I   : in  std_logic_vector(2 downto 0) := "000";
+        CYC_I   : in  std_logic;
+        DAT_I   : in  std_logic_vector({{ datahigh }} downto 0);
+        DAT_O   : out std_logic_vector({{ datahigh }} downto 0);
+        ERR_O   : out std_logic;
+        LOCK_I  : in  std_logic := '0'
+        RTY_O   : out std_logic;
+        SEL_I   : in  std_logic_vector({{ behigh }} downto 0) := (others := '1');
+        STALL_O : out std_logic;
+        STB_I   : in  std_logic;
+        WE_I    : in  std_logic
     );
 end entity {{ node.name }};
 
 use work.pkg_{{ node.name }}.all;
 use ieee.numeric_std.all;
 
-architecture Behavioral of {{ node.name }} is
+architecture Structural of {{ node.name }} is
     
-    signal addr : unsigned(ADR_I'range);
+    signal addr : unsigned({{ addrhigh }} downto 0);
     
-    -- TODO: Add any local signals here.
+    -- START: Add any local signals here.
+    -- END:   Add any local signals here.
     
 begin
     
-    addr <= UNSIGNED(ADR_I);
+    addr <= SHIFT_LEFT(UNSIGNED(ADR_I), {{ addrlsbs }});
     
     -- MOSI signals
     {% for c in instances %}
     {% set name = c.name %}
-    {{ name }}_ADR_O <= ADR_I({{ name }}_ADR_O'range);
+    {{ name }}_ADR_O <= STD_LOGIC_VECTOR(addr({{ name }}_ADR_O'range));
+    {{ name }}_BTE_O <= BTE_I;
+    {{ name }}_CTI_O <= CTI_I;
     {{ name }}_CYC_O <= CYC_I;
     {{ name }}_DAT_O <= DAT_I;
+    {{ name }}_LOCK_O <= LOCK_I;
     {{ name }}_SEL_O <= SEL_I;
     {{ name }}_WE_O  <= WE_I;
-    {{ name }}_STB_O <= STB_I when (addr >= {{ c.offset }}) and (addr < {{ c.offset + c.size }}) else '0';
-        
+    {{ name }}_STB_O <= STB_I when (not IS_X(addr)) and (addr >= {{ c.offset }}) and (addr < {{ c.offset + c.size }}) else '0';
+
     {% endfor %}
     
     -- MISO signals take advantage of the fact that the slaves are well
     -- behaved to simplify the strobes.
     {% macro oritall(suffix) -%}
-        {% for c in instances %}{{ c.name + suffix }}{% if not loop.last %} or {% endif %}{% endfor %};
+        {% for c in instances %}{{ c.name + suffix }}{% if not loop.last %} or {% endif %}{% endfor %}
     {%- endmacro %}
     
-    ACK_O <= {{ oritall('_ACK_I') }}
-    ERR_O <= {{ oritall('_ERR_I') }}
-    RTY_O <= {{ oritall('_RTY_I') }}
+    ACK_O <= {{ oritall('_ACK_I') }};
+    ERR_O <= {{ oritall('_ERR_I') }};
+    RTY_O <= {{ oritall('_RTY_I') }};
     
-    DAT_O <=
+    DAT_O <= (others => 'X') when IS_X(addr) else
         {% for c in instances %}
         {{ c.name }}_DAT_I when (addr >= {{ c.offset }}) and (addr < {{ c.offset + c.size }}) else
         {% endfor %}
         (others => 'X');
+        
+    STALL_O <= '0' when IS_X(addr) else
+        {% for c in instances %}
+        {{ c.name }}_STALL_I when (addr >= {{ c.offset }}) and (addr < {{ c.offset + c.size }}) else
+        {% endfor %}
+        '0';
+        
+    -- START: Add any custom logic here.
+    -- END:   Add any custom logic here.
     
-end architecture Behavioral;
+end architecture Structural;

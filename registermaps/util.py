@@ -127,6 +127,7 @@ class _Outputs:
             
         """
         self._outputs[kls.outputname] = kls
+        return kls
     
     def __iter__(self):
         """Iterate over all the registered outputs."""
