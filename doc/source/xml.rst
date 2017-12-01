@@ -114,104 +114,127 @@ Component Definition
 component
 +++++++++
 
-Required attributes:
+Attributes:
 
-    :name:  name of the component
-    :width: number of bits per word, must be a power of 2 greater than or equal
-            to 8.
+    name *(required)*
+        name of the component
+    width *(required)*
+        number of bits per word, must be a power of 2 greater than or equal
+        to 8.
   
-Optional attributes:
-
-    :readOnly:  Component default is read-only (default=false)
-    :size:      number of words in the component (default = auto)
-    :writeOnly: Component default is write-only (default=false)
+    readOnly
+        Component default is read-only (default=false)
+    size    
+        number of words in the component (default=auto)
+    writeOnly
+        Component default is write-only (default=false)
 
 Contains:
 
-    - register
-    - registerarray
+    - `register`_
+    - `registerarray`_
     
 registerarray
 +++++++++++++
 
-Required attributes:
+Attributes:
 
-    :count: number of copies of the contents
+    count *(required)*
+        number of copies of the contents
     
-Optional attributes:
-
-    :framesize: number of words in each copy of the array (default=auto)
-    :name:      name of the registerarray.  Defaults to the name of the contained
-                element if only one element is contained; required otherwise.
-    :offset:    word offset of the start of the array (default=auto)
-    :readOnly:  registerarray is read-only (default=inherit from parent)
-    :size:      number of words in the registerarray.  If provided must equal
-                framesize * count (default=auto)
-    :writeOnly: registerarray is write-only (default=inherit from parent)
+    framesize   
+        number of words in each copy of the array (default=auto)
+    name
+        name of the registerarray.  Defaults to the name of the contained
+        element if only one element is contained; required otherwise.
+    offset
+        word offset of the start of the array (default=auto)
+    readOnly
+        registerarray is read-only (default=inherit from parent)
+    size
+        number of words in the registerarray.  If provided must equal
+        framesize * count (default=auto)
+    writeOnly
+        registerarray is write-only (default=inherit from parent)
 
 Contains:
 
-    - register
-    - registerarray
+    - `register`_
+    - `registerarray`_
 
 register
 ++++++++
 
-Required attributes:
+Attributes:
 
-    :name: register name
+    name *(required)*
+        register name
     
-Optional attributes:
-    
-    :format:    register data format, from "bits", "signed", "unsigned"
-                (default="bits")
-    :offset:    word offset of the start of the register (default=auto)
-    :readOnly:  register is read-only (default=inherit from parent)
-    :reset:     reset value, (default=0)
-    :size:      number of words in the register.  Currently only 1 is allowed.
-                (default=1)
-    :width:     number of bits in the register, if the register has no fields.
-                Values must be less than or equal to the component word with.
-                (default=component word width)
-    :writeOnly: register is write-only (default=inherit from parent)
+    format:
+        register data format, from "bits", "signed", "unsigned"
+        (default="bits")
+    offset
+        word offset of the start of the register (default=auto)
+    readOnly
+        register is read-only (default=inherit from parent)
+    reset
+        reset value, (default=0)
+    size
+        number of words in the register.  Currently only 1 is allowed.
+        (default=1)
+    width
+        number of bits in the register, if the register has no fields.
+        Values must be less than or equal to the component word with.
+        (default=component word width)
+    writeOnly
+        register is write-only (default=inherit from parent)
     
 Contains:
 
-    - field
+    - `field`_
     
 field
 +++++
 
-Required attributes:
+Attributes:
 
-    :name: field name
+    name *(required)*
+        field name
         
-Optional attributes:
-    
-    :format:    field data format, from "bits", "signed", "unsigned"
-                (default="bits")
-    :offset:    bit offset of the LSB of the field (default=auto)
-    :readOnly:  register is read-only (default=inherit from parent)
-    :reset:     reset value, integer or enum name (default=0)
-    :size:      number of bits in the field (default=1)
-    :width:     alias for *size*
-    :writeOnly: register is write-only (default=inherit from parent)
+        
+    format
+        field data format, from "bits", "signed", "unsigned"
+        (default="bits")
+    offset
+        bit offset of the LSB of the field (default=auto)
+    readOnly
+        register is read-only (default=inherit from parent)
+    reset
+        reset value, integer or enum name (default=0)
+    size
+        number of bits in the field (default=1)
+    width
+        alias for *size*
+    writeOnly
+        register is write-only (default=inherit from parent)
     
 Contains:
 
-    - enum
+    - `enum`_
 
 enum
 ++++
 
-Required attributes:
+Attributes:
 
-    :name: enumeration name
+    name *(required)*
+        enumeration name
     
-Optional attributes:
-    
-    :offset:    integer value of the enumeration (default=auto)
-    :value:     alias for *offset*
+    offset
+        integer value of the enumeration (default=auto)
+        
+    value
+        alias for *offset*
     
 MemoryMap Definition
 --------------------
@@ -219,26 +242,43 @@ MemoryMap Definition
 memorymap
 +++++++++
 
-Required attributes:
-
-    :name: memorymap name
+Attributes:
     
-Optional attributes:
+    name *(required)*
+        memorymap name
     
-    :base: Base address of the entire map (default=0x80000000)
+    base
+        Base address of the entire map (default=0x80000000)
+        
+    spacing
+        The minimum spacing from one instance to the next, in bytes.
+        
+        Increasing this value (which should probably always be a
+        power of two) can shorten the SoC address decoder; a 16kB
+        space with a 1kB spacing requires decoding only the 4 MSBs of
+        the address, whereas with 16B spacing the decoder requires
+        10 MSBs instead. (default=1)
     
 Contains:
 
-    - instance
+    - `instance`_
     
 instance
 ++++++++
 
-Required attributes:
+Attributes:
 
-    :name: instance name
+    name *(required)*
+        instance name
 
-Optional attributes:
-
-    :extern: name of the component this is an instance of (default=instance name)
-    :offset: offset from start of MemoryMap in bytes (default=auto)
+    extern
+        name of a `component`_ that this is an instance of (default=instance name)
+      
+    offset
+        offset from start of MemoryMap in bytes (default=auto)
+        
+    size
+        size of the Instance's address space in bytes.  If the size is 
+        larger than that of the underlying bound component then the address        
+        decode logic will likely cause the registers to be repeated.
+                

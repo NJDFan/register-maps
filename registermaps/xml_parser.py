@@ -63,7 +63,7 @@ _tfmap = {
     '0' : False
 }
 def tf(text):
-    """Convert common representations of true and false to bool."""
+    """Convert common string representations of true and false to bool."""
     try:
         return _tfmap[text.upper()]
     except KeyError:
@@ -83,11 +83,19 @@ def _formatvalidator(text):
     return text
 
 def toint(text):
-    """str to int that accepts "0x..." style strings"""
+    """str to int that accepts either decimal or "0x..." hex strings"""
     return int(text, base=0)
 
 def inherit(fieldname):
-    """Use as a default function to inherit a field from the parent."""
+    """Create a function that returns *fieldname* from the parent object.
+    
+    Example:
+    
+        >>> defaults = {
+        ...    'readOnly' : inherit('readOnly')
+        ... }
+    
+    """
     def inheritor(self):
         return getattr(self.parent, fieldname, None)
     return inheritor
@@ -112,50 +120,46 @@ class XmlError(Exception):
 class HtiElement():
     """Abstract base class for all elements.
     
-    Data members
-    ------------
+    In addition to the attributes below provided for all classes, all 
+    attributes provided by the XML (or through the default mechanisms) are 
+    available through the standard Python attribute syntax.
     
-    parent
-        The parent object for this element.
+    :attr:`required` and :attr:`optional` are both dicts that map attribute names to
+    **typefn** functions, i.e. functions that turn a single str input into
+    values of the correct type.  :func:`str` is an example of this, as are
+    :func:`int` and :func:`bool`, though the locally provided functions
+    :func:`toint` and :func:`tf` are more suitable for getting these values
+    in this context.
     
-    space
-        A space filled with the children of this object
+    Attributes:
+        parent (HtiElement): The parent object for this element.
+        space (:class:`~registermaps.space.Space`): A space filled with the children of this object
+        description (list of str): A list of description text, one paragraph
+            per element.
+        required (dict): Set in subclasses to map required attribute names to
+            typefns. All subclasses require 'name' by default.  To avoid this,
+            put ``'name' : None`` in required.
+        optional (dict): Set in subclases to map optional attribute names to
+            typefns.
+        defaults (dict): Default values for attributes.  Attributes must be
+            present in either `required` or `optional`.  Value can also be a 
+            function of one argument, which is *self*, in which case the 
+            function is called and the attribute given the value returned.
+            
+            :func:`inherit`, is a factory for default functions that retrieve
+            a given attribute value from the element's parent.
+            
+            When using defaults, they will not be passed through the
+            typefn from optional.
+        space_size (int):
+            Initialization argument for :attr:`space`
+        space_placer (class):
+            Initialization argument for :attr:`space`
+        space_resizer (class):
+            Initialization argument for :attr:`space`
+        textasdesc (bool): If True (default), bare text inside of the element will        
+            become a child <description> element.
         
-    description
-        A list of description text, one paragraph per element.
-    
-    Additionally, all XML-style attributes will be made available with 
-    the attribute syntax.
-    
-    Subclass Overloads
-    ------------------
-    required, optional
-        dict of key : typefn pairs, such as {'name' : str, 'bits' : int}
-        typefn is any function that turns a single string input to the
-        correct type or raises ValueError.
-        
-        All subclasses require 'name' by default.  To avoid this, put
-        'name' : None in to the subclass required dict.
-        
-        The tf typefn is useful for turning XML-style boolean values
-        such as "true" into bools.
-        
-    defaults
-        dict of key : value pairs to set default values as appropriate
-        for optional arguments.  Value can also be a function of one
-        argument, which is self, in which case the function is called
-        and the attribute given the value returned.
-        
-        When using defaults, they will not be passed through the
-        typefn from optional.
-        
-    space_size, space_placer, space_resizer
-        Arguments for the Space.
-        
-    textasdesc
-        Default is True.  If True, bare text inside of the element will
-        become a child <description> element.
-    
     """
     
     _required = {
@@ -377,12 +381,14 @@ class MemoryMap(HtiElement):
     
     optional = {
         'base' : toint,
+        'spacing' : toint,
         'readOnly' : tf,
         'writeOnly' : tf,
         '{http://www.w3.org/2001/XMLSchema-instance}noNamespaceSchemaLocation' : str
     }
     defaults = {
         'base' : 0x80000000,
+        'spacing' : 1,
         'readOnly' : False,
         'writeOnly' : False,
     }
@@ -402,13 +408,21 @@ class Instance(HtiElement):
     words.
     """
     
+    def minimumSize(self):
+        """Round up the instance size to the MemoryMap spacing."""
+        spacing = self.parent.spacing
+        size = self.binding.size * (self.binding.width // 8)
+        n_spaces = (size + spacing - 1) // spacing
+        return n_spaces * spacing
+    
     optional = {
         'offset' : toint,
+        'size'   : toint,
         'extern' : str
     }
     defaults = {
         'extern' : lambda self: self.name,
-        'size' : lambda self: self.binding.size * self.binding.width // 8
+        'size' : minimumSize
     }
     
     @property
@@ -634,7 +648,7 @@ class XmlParser:
         Any XML files not rooted in a component or memorymap will throw
         an error.
         
-        path supports the **/ syntax, meaning "this directory and all
+        path supports the ``**/`` syntax, meaning "this directory and all
         subdirectories."
         """
         

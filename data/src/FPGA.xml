@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="iso-8859-1"?>
-<memorymap name="FPGA" base="0x0000000">
+<memorymap name="FPGA" base="0x0000000" spacing="256">
     <description>
     The 22C250 FPGA manages the communication with VME bus.  
     </description>
@@ -9,9 +9,9 @@
     the VME bus.    
     </description>
     
-	<instance name="IDENT" extern="IDENT"	offset="0x000"/>
-	<instance name="DIO" extern="DIO"	offset="0x040"/>
-	<instance name="ANALOG" extern="ANALOG"	offset="0x060"/>
-	<instance name="CONTROL" extern="CONTROL"	offset="0x080"/>
+	<instance name="IDENT" extern="IDENT"/>
+	<instance name="DIO" extern="DIO"/>
+	<instance name="ANALOG" extern="ANALOG"/>
+	<instance name="CONTROL" extern="CONTROL"/>
 	<instance name="BUFFER"/>
 </memorymap>
