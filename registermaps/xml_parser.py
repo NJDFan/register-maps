@@ -105,6 +105,15 @@ def inherit(fieldname):
 ########################################################################
 
 class XmlError(Exception):
+    """Documents an error while parsing the XML.
+    
+    Attributes:
+        msg (str): The error message.
+        sourcefile (str): The filename where the error occured.
+        element (lxml.etree._Element): The XML element where the error occured.
+    """
+    
+    
     def __init__(self, msg, element, sourcefile='unknown file'):
         self.msg = msg
         self.element = element
@@ -598,7 +607,7 @@ class _Array(HtiElement):
         if self.name is None:
             children = list(self.space.items())
             if len(children) == 1:
-                self._attrib['name'] = self.children[0].name
+                self._attrib['name'] = children[0].obj.name
             else:
                 raise ValueError('Array with more than one contained element needs a name.')
                 
