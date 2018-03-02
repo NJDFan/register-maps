@@ -25,7 +25,15 @@ from ..util import resource_text, printverbose, Outputs
 
 CLASS = E.CLASS
 FOOTER = Element('footer')
+
+def htmlpathjoin(*args):
+    """Like os.path.join, but always uses /."""
     
+    leading = '/' if args[0].startswith('/') else ''
+    return leading + '/'.join(
+        a.strip('/') for a in args if a
+    )
+
 def register_format(node):
     """Returns the format (signed, unsigned, or nothing) and access
      class ('Read-Only', 'Write-Only' or a default) of a register.
@@ -169,7 +177,7 @@ class basic(Visitor):
                 E.TITLE(title),
                 E.LINK(
                     rel='stylesheet', type='text/css',
-                    href=os.path.join(self.styledir, 'reg.css')
+                    href=htmlpathjoin(self.styledir, 'reg.css')
                 )
             ),
             E.BODY(
@@ -350,7 +358,7 @@ class basic(Visitor):
                 E.TITLE(title),
                 E.LINK(
                     rel='stylesheet', type='text/css',
-                    href=os.path.join(self.styledir, 'reg.css')
+                    href=htmlpathjoin(self.styledir, 'reg.css')
                 )
             ),
             E.BODY(
@@ -375,7 +383,7 @@ class basic(Visitor):
         # If we're writing files, write another one for the instance and
         # create an HTML link.  Otherwise just give it a name.
         try:
-            relativefile = os.path.join(self.subdir, node.name + self.extension)
+            relativefile = htmlpathjoin(self.subdir, node.name + self.extension)
             filename = os.path.join(self.path, relativefile)
         
         except TypeError:
@@ -391,9 +399,9 @@ class basic(Visitor):
             obj.inst = node.name
             obj.breadcrumbs = E.A(
                 self.title,
-                href=os.path.join('..', self.filename)
+                href=htmlpathjoin('..', self.filename)
             )
-            obj.styledir = os.path.join(self.styledir, '..')
+            obj.styledir = htmlpathjoin(self.styledir, '..')
             obj.execute(node.binding)
             linkelement = E.A(node.name, href=relativefile)
         
