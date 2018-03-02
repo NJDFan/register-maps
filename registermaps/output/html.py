@@ -129,14 +129,13 @@ class basic(Visitor):
         ww = node.width // 8
         an = ((node.size-1).bit_length() + 3) // 4
         with self.tempvars(wordwidth=ww, address_nibbles=an, hlev=2):
-            contentnode = E.DIV(
-                E.H1(title, id='title'),
-                bc,
-                *[E.P(d) for d in node.description],
-                *self.visitchildren(node),
-                self.footer(node),
-                id='content'
+            nodes = (
+                [E.H1(title, id='title'), bc] +
+                [E.P(d) for d in node.description] +
+                [c for c in self.visitchildren(node)] +
+                [self.footer(node)]
             )
+            contentnode = E.DIV(*nodes, id='content')
         
         # Add a table of contents sidebar.  We'll assume that everything that
         # wants to be in the TOC is already a heading and just work from there.
@@ -231,8 +230,9 @@ class basic(Visitor):
         root = E.DIV(
             ap,
             self.heading(node.name),
+            CLASS('register'),
             *[E.P(d, CLASS('description')) for d in node.description],
-            CLASS('register'), id="REG_" + node.name
+            id="REG_" + node.name
         )
         
         if node.space:
@@ -254,15 +254,15 @@ class basic(Visitor):
                 rows.append(row)
                 
                 rows.append(E.TR(
-                    *[E.TD(str(n-1)) for n in range(endbit, startbit, -1)],
-                    CLASS('bit_numbers')
+                    CLASS('bit_numbers'),
+                    *[E.TD(str(n-1)) for n in range(endbit, startbit, -1)]
                 ))
             table.extend(reversed(rows))
             root.append(table)
             
             fieldlist = E.UL(
-                *self.visitchildren(node, reverse=True),
-                CLASS('fieldlist')
+                CLASS('fieldlist'),
+                *self.visitchildren(node, reverse=True)
             )
             root.append(fieldlist)
             
@@ -316,21 +316,19 @@ class basic(Visitor):
         with self.tempvars(
             wordwidth=1, address_nibbles=an, base=node.base,
             subdir=node.name+'_instances', hlev=2):
-            
-            contentnode = E.DIV(
-                E.H1(title, id='title'),
-                *[E.P(d) for d in node.description],
-                E.HR(),
-                E.TABLE(
-                    E.TR(
-                        E.TH('Peripheral'), E.TH('Base Address'), E.TH('Size'), E.TH('Description'),
-                        *self.visitchildren(node),
-                    ),
-                    CLASS('component_list')
-                ),
-                self.footer(node),
-                id='content'
+            children = list(self.visitchildren(node))
+            table = E.TABLE(
+                E.TR(
+                    E.TH('Peripheral'), E.TH('Base Address'), E.TH('Size'), E.TH('Description'),
+                    *children
+                ), CLASS('component_list')
             )
+            nodes = (
+                [E.H1(title, id='title')] +
+                [E.P(d) for d in node.description] +
+                [E.HR(), table, self.footer(node)]
+            )
+            contentnode = E.DIV(*nodes, id='content')
 
         # Add a table of contents sidebar for each table row.
         instlist = E.UL()
@@ -412,8 +410,8 @@ class basic(Visitor):
             E.TD(offset, CLASS('paddress')),
             E.TD('0x{:0{}X}'.format(node.size, self.address_nibbles), CLASS('psize')),
             E.TD(
-                *[E.P(d) for d in desc],
-                CLASS('pdesc')
+                CLASS('pdesc'),
+                *[E.P(d) for d in desc]
             )
         )
         
