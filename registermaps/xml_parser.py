@@ -664,12 +664,17 @@ class XmlParser:
         # Figure out which files code components and which code
         # memorymaps.
         #
-        globber = glob.iglob(os.path.join(path, '*.xml'), recursive=True)
+        files = (
+            os.path.join(p, f)
+                for p, s, files in os.walk(path)
+                for f in files
+                if f.casefold().endswith('.xml')
+        )
         treesorter = {
             'component' : self.componentxml,
             'memorymap' : self.mmxml
         }
-        for fn in globber:
+        for fn in files:
             try:
                 t = self._readXml(fn)
                 tag = t.getroot().tag
