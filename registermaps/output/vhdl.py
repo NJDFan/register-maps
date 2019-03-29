@@ -315,9 +315,14 @@ class GenerateTypes(VhdlVisitor):
             name=node.name,
             fmt = register_format(node),
         )
-        self.printf('constant RESET_{0} : {0} :=  "{1:0{2}b}";',
-              self.namer(node), node.reset, node.width
-        )
+        if node.width == 1:
+            self.printf("constant RESET_{0} : {0} :=  '{1}';",
+                  self.namer(node), node.reset
+            )
+        else:
+            self.printf('constant RESET_{0} : {0} :=  "{1:0{2}b}";',
+                  self.namer(node), node.reset, node.width
+            )
         self.print()
                     
     def visit_Field(self, node):
