@@ -63,7 +63,6 @@ h3 {
     }
 }
 
-
 /* Component/Instance specific styles. */
 
 div.register {
@@ -92,6 +91,10 @@ tr.bit_numbers {
     background: PapayaWhip;
 }
 
+tr.fields {
+    font-size: 0.7em;
+}
+
 td {
     border: 1px solid black;
 }
@@ -112,10 +115,23 @@ ul.fieldlist {
     font-style: italic;
 }
 
-p.address {
+.address {
     font-size: 0.8 em;
     font-style: italic;
     float: right;
+}
+
+dl.enumlist {
+    border-left: 2px double #eee;
+    font-size: smaller;
+}
+
+dl.enumlist  dt {
+    background: #eee
+}
+
+dl.enumlist dd {
+    padding-bottom: 0.2em;
 }
 
 /* MemoryMap specific styles */

@@ -311,7 +311,7 @@ class basic(Visitor):
         """Return a list of DT/DD elements for the enum DL."""
         
         return (
-            [E.DT('{} - {}'.format(node.name, node.value))] + 
+            [E.DT(node.name, E.SPAN(str(node.value), CLASS('address')))] + 
             [E.DD(d) for d in node.description]
         )
          
