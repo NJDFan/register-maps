@@ -57,6 +57,7 @@ Template generated automatically on {{ time.strftime("%d %b %Y %H:%M") }} from
 
 library ieee;
 use ieee.std_logic_1164.all;
+use ieee.numeric_std.all;
 
 entity {{ node.name }} is
     port (
@@ -68,12 +69,14 @@ entity {{ node.name }} is
         {% set name = c.name %}
         {% set addrlsbs = ((c.binding.width // 8)-1).bit_length() %}
         {% set addrhigh = (c.binding.size - 1).bit_length() - 1 + addrlsbs %}
+        {% set datahigh = c.binding.width - 1 %}
+        {% set behigh = (c.binding.width//8) - 1 %}
         {{ name }}_ACK_I    : in  std_logic;
         {{ name }}_ADR_O    : out std_logic_vector({{ addrhigh }} downto {{ addrlsbs }});
         {{ name }}_BTE_O    : out std_logic_vector(1 downto 0);
         {{ name }}_CTI_O    : out std_logic_vector(2 downto 0);
         {{ name }}_CYC_O    : out std_logic;
-        {{ name }}_DAT_I    : in  std_logic_vector({{ datahigh }} downto 0) := 'X';
+        {{ name }}_DAT_I    : in  std_logic_vector({{ datahigh }} downto 0) := (others => 'X');
         {{ name }}_DAT_O    : out std_logic_vector({{ datahigh }} downto 0);
         {{ name }}_ERR_I    : in  std_logic := '0';
         {{ name }}_LOCK_O   : out std_logic;
@@ -87,7 +90,7 @@ entity {{ node.name }} is
         
         -- WISHBONE master interface
         {% set addrlsbs = ((datawidth // 8)-1).bit_length() %}
-        {% set addrhigh = (node.size - 1).bit_length() - 1 + addrlsbs %}
+        {% set addrhigh = (node.size - 1).bit_length() - 1 %}
         {% set datahigh = datawidth - 1 %}
         {% set behigh = (datawidth // 8) - 1 %}
         ACK_O   : out std_logic;
@@ -98,17 +101,14 @@ entity {{ node.name }} is
         DAT_I   : in  std_logic_vector({{ datahigh }} downto 0);
         DAT_O   : out std_logic_vector({{ datahigh }} downto 0);
         ERR_O   : out std_logic;
-        LOCK_I  : in  std_logic := '0'
+        LOCK_I  : in  std_logic := '0';
         RTY_O   : out std_logic;
-        SEL_I   : in  std_logic_vector({{ behigh }} downto 0) := (others := '1');
+        SEL_I   : in  std_logic_vector({{ behigh }} downto 0) := (others => '1');
         STALL_O : out std_logic;
         STB_I   : in  std_logic;
         WE_I    : in  std_logic
     );
 end entity {{ node.name }};
-
-use work.pkg_{{ node.name }}.all;
-use ieee.numeric_std.all;
 
 architecture Structural of {{ node.name }} is
     
@@ -119,7 +119,10 @@ architecture Structural of {{ node.name }} is
     
 begin
     
-    addr <= SHIFT_LEFT(UNSIGNED(ADR_I), {{ addrlsbs }});
+    addr <= SHIFT_LEFT(
+		RESIZE(UNSIGNED(ADR_I), addr'length),
+		{{ addrlsbs }}
+	);
     
     -- MOSI signals
     {% for c in instances %}
@@ -132,7 +135,7 @@ begin
     {{ name }}_LOCK_O <= LOCK_I;
     {{ name }}_SEL_O <= SEL_I;
     {{ name }}_WE_O  <= WE_I;
-    {{ name }}_STB_O <= STB_I when (not IS_X(addr)) and (addr >= {{ c.offset }}) and (addr < {{ c.offset + c.size }}) else '0';
+    {{ name }}_STB_O <= STB_I when (not IS_X(STD_LOGIC_VECTOR(addr))) and (addr >= {{ c.offset }}) and (addr < {{ c.offset + c.size }}) else '0';
 
     {% endfor %}
     
@@ -146,13 +149,13 @@ begin
     ERR_O <= {{ oritall('_ERR_I') }};
     RTY_O <= {{ oritall('_RTY_I') }};
     
-    DAT_O <= (others => 'X') when IS_X(addr) else
+    DAT_O <= (others => 'X') when IS_X(STD_LOGIC_VECTOR(addr)) else
         {% for c in instances %}
         {{ c.name }}_DAT_I when (addr >= {{ c.offset }}) and (addr < {{ c.offset + c.size }}) else
         {% endfor %}
         (others => 'X');
         
-    STALL_O <= '0' when IS_X(addr) else
+    STALL_O <= '0' when IS_X(STD_LOGIC_VECTOR(addr)) else
         {% for c in instances %}
         {{ c.name }}_STALL_I when (addr >= {{ c.offset }}) and (addr < {{ c.offset + c.size }}) else
         {% endfor %}
