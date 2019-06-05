@@ -55,11 +55,9 @@ begin
  {% for b in byte %}
     if IS_HIGH(byteen({{b.index}})) then
      {% for f in b.fields %}
-      {% if f.subtype.upper() == "STD_LOGIC" %}
-        reg.{{f.ident}} := dat({{f.srcrange}});
-      {% else %}
-        reg.{{f.ident}}({{f.range}}) := {{f.subtype|upper}}( dat({{f.srcrange}}) );
-      {% endif %}
+      {% set src = "dat({})".format(f.srcrange) if f.size == 1 else "{}(dat({}))".format(f.subtype.upper(), f.srcrange) %}
+      {% set dst = "reg.{}".format(f.ident) if f.subtype.upper() == "STD_LOGIC" else "reg.{}({})".format(f.ident, f.range) %}
+        {{dst}} := {{src}};
      {% endfor %}
     end if;
  {% endfor %}

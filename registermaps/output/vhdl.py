@@ -403,11 +403,12 @@ class GenerateFunctionBodies(VhdlVisitor):
             for obj, start, size in space.items():
                 if (not obj.readOnly) or allow_readOnly:
                     yield {
-                        'name' : obj.name,
-                        'ident' : obj.identifier,
-                        'srcrange' : getrange(start, size),
-                        'subtype' : register_format(obj, index=False),
-                        'range' : getrange(start-obj.offset, size),
+                        'name'		: obj.name,
+                        'ident'		: obj.identifier,
+                        'srcrange'	: getrange(start, size),
+                        'subtype'	: register_format(obj, index=False),
+                        'range'		: getrange(start-obj.offset, size),
+                        'size'		: size
                     }
             
         fields = list(extractor(node.space, True))
