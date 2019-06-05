@@ -281,7 +281,7 @@ class HtiElement():
         self.space = space.Space(
             self.space_size, self.space_resizer, self.space_placer
         )
-        self.description = []
+        self._description = []
         self._textdesc(xml_element.text)
                
         unplaced_children = []
@@ -316,13 +316,18 @@ class HtiElement():
         
     def _adddesc(self, text):
         """Append a description element, cleaning whitespace."""
-        text = text.strip()
         if text:
+            text = text.strip()
             text = re.sub('\s+', ' ', text)
-            self.description.append(text)
+            self._description.append(text)
         
     def _textdesc(self, text):
-        """Append descriptive text or raise a ValueError as appropriate."""
+        """Append descriptive text, cleaning whitespace.
+        
+        Raises
+        ------
+        ValueError: textasdesc is False.
+        """
         if text:
             if self.textasdesc:
                 self._adddesc(text)
@@ -360,8 +365,21 @@ class HtiElement():
     def attributes(self):
         """Return a dict of attributes."""
         return self._attrib
+    
+    @property    
+    def description(self):
+        """Iterable of description lines.
         
-            
+        Yields:
+            One line at a time of description.  There is no length limit, but
+            no line will contain a newline character.
+        """
+        
+        for elem in self._description:
+            text = str(elem)
+            for line in text.splitlines():
+                yield line
+        
 class Description:
     """Defines a Description element, which is a child of practically
     any HtiElement.
@@ -380,6 +398,35 @@ class Description:
         if len(xml_element):
             raise ValueError('description element cannot have children')
         parent._adddesc(xml_element.text.strip())
+        
+class RstDescription:
+    """Defines an rstdesc element (reStructuredText), which is a child of
+    practically any HtiElement.
+    
+    Upon its creation, an RstDescription will insert itself into the
+    description list of its parent.
+    
+    TODO: Extracting these will take more work.
+    """
+    
+    # Description is entirely different than an HtiElement, and as
+    # such doesn't even inherit from HtiElement; it just duck types
+    # an __init__ with the same prototype and the ischild element.
+    
+    ischild = False
+    
+    def __init__(self, xml_element, parent, sourcefile='unknown file'):
+        if len(xml_element):
+            raise ValueError('description element cannot have children')
+        
+        # Strip leading blank lines and trailing whitespace.    
+        text = re.sub(r'^(\s*\n)+', '', xml_element.text)
+        text = text.rstrip()
+        self._text = text
+        parent._description.append(self)
+        
+    def __str__(self):
+        return self._text
         
 class MemoryMap(HtiElement):
     """A MemoryMap contains several Instances.
@@ -625,6 +672,7 @@ class RegisterArray(_Array):
 _classes_by_name = { c.__name__.lower() : c for c in HtiElement.__subclasses__() }
 _classes_by_name.update((c.__name__.lower(), c) for c in _Array.__subclasses__())
 _classes_by_name['desc'] = Description
+_classes_by_name['rstdesc'] = RstDescription
 _classes_by_name['description'] = Description
 def _classlookup(name):
     return _classes_by_name[name]
