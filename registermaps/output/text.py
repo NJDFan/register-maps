@@ -39,18 +39,22 @@ class tree(Visitor):
         self.indent = oldindent
         
     def defaultvisit(self, node):
-        line = '{} {} ({})'.format(
+        skipattrs = ['name', 'readOnly', 'writeOnly']
+        line = '{} {} ({}{})'.format(
             type(node).__name__, node.name,
-            ','.join('{}={}'.format(k, v) for k, v in node._attrib.items() if k != 'name')
+            ','.join('{}={}'.format(k, v) for k, v in node._attrib.items() if k not in skipattrs),
+            self.rostat(node)
         )
         self.headline(line, node)
         
     def visit_Component(self, node):
-        line = 'component {} (size={})'.format(node.name, node.size)
+        line = 'component {} (size={}{})'.format(node.name, node.size, self.rostat(node))
         self.headline(line, node)
         
     def visit_Register(self, node):
-        line = '({}) {} (reset={})'.format(node.offset, node.name, node.reset)
+        line = '({}) {} (reset={}{})'.format(
+            node.offset, node.name, node.reset, self.rostat(node)
+        )
         self.headline(line, node)
         
     def visit_Instance(self, node):
@@ -61,3 +65,6 @@ class tree(Visitor):
         line = '{} = {}'.format(node.name, node.value)
         self.headline(line, node)
         
+    def rostat(self, node):
+        """Return a note for readOnly or writeOnly."""
+        return ' RO' if node.readOnly else ' WO' if node.writeOnly else ''

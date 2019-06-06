@@ -7,9 +7,10 @@ Expects:
     child (Register): The register element in the array.
 #}
 ---- {{node.name}} ----
+{% set offset_t = "integer range 0 to {}".format(node.size * node.framesize - 1) %}
 procedure UPDATE_{{node.name}}(
     dat: in t_busdata; byteen : in std_logic_vector;
-    offset: in t_addr;
+    offset: in {{offset_t}};
     variable ra: inout ta_{{node.name}};
     success: out boolean
 ) is
@@ -26,7 +27,7 @@ end procedure UPDATE_{{node.name}};
 
 procedure UPDATESIG_{{node.name}}(
     dat: in t_busdata; byteen : in std_logic_vector;
-    offset: in t_addr;
+    offset: in {{offset_t}};
     signal ra: inout ta_{{node.name}};
     success: out boolean
 ) is
@@ -45,7 +46,7 @@ begin
 end procedure UPDATESIG_{{node.name}};
 
 procedure READ_{{node.name}}(
-    offset: in t_addr;
+    offset: in {{offset_t}};
     ra: in ta_{{node.name}};
     dat: out t_busdata;
     success: out boolean
@@ -62,12 +63,12 @@ begin
  {% endif %}
 end procedure READ_{{node.name}};
 
-function {{node.name}}_IS_READABLE(offset : in integer range 0 to {{node.size}}-1) return boolean is
+function {{node.name}}_IS_READABLE(offset : in {{offset_t}}) return boolean is
 begin
     return {{ 'false' if node.writeOnly else 'true' }};
 end function {{node.name}}_IS_READABLE;
 
-function {{node.name}}_IS_WRITEABLE(offset : in integer range 0 to {{node.size}}-1) return boolean is
+function {{node.name}}_IS_WRITEABLE(offset : in {{offset_t}}) return boolean is
 begin
     return {{ 'false' if node.readOnly else 'true' }};
 end function {{node.name}}_IS_WRITEABLE;

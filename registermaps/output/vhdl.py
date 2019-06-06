@@ -355,7 +355,9 @@ class GenerateFunctionDeclarations(VhdlVisitor):
         self.printf(self.rt('fndecl_component'), name=node.name)
             
     def visit_RegisterArray(self, node):
-        self.printf(self.rt('fndecl_registerarray'), name=node.name)
+        self.print(
+            self.template('fndecl_registerarray.j2').render(node=node)
+        )
         self.visitchildren(node)
     
     def visit_Register(self, node):
@@ -367,16 +369,12 @@ class GenerateFunctionBodies(VhdlVisitor):
     
     def visit_Component(self, node):
         """Print all function bodies for the Component"""
-        
-        self.print(commentblock('Address Grabbers'))
-        maxaddr = node.size - 1
-        self.printf(self.rt('fnbody_address'), high=maxaddr.bit_length()-1)
-        
-        self.print(commentblock('Accessor Functions'))
-        self.visitchildren(node)
-        
         self.print(
-            self.template('fnbody_component.j2').render(node = node)
+            self.template('fnbody_component_top.j2').render(node = node)
+        )
+        self.visitchildren(node)
+        self.print(
+            self.template('fnbody_component_bottom.j2').render(node = node)
         )
 
     def visit_RegisterArray(self, node):
@@ -384,12 +382,15 @@ class GenerateFunctionBodies(VhdlVisitor):
 
         self.visitchildren(node)
         if node.space.itemcount > 1:
-            tmpl = jinja.get_template('vhdl/fnbody_registerarray_complex.j2')
-            self.print(tmpl.render(node=node)) 
+            self.print(
+                self.template('fnbody_registerarray_complex.j2').render(node=node)
+            ) 
         else:
-            tmpl = jinja.get_template('vhdl/fnbody_registerarray_simple.j2')
             child = next(node.space.items()).obj
-            self.print(tmpl.render(node=node, child=child)) 
+            self.print(
+                self.template('fnbody_registerarray_simple.j2').render(
+                    node=node, child=child
+            ))
             
     def visit_ComplexRegister(self, node):
         """Print register access function bodies."""
@@ -418,9 +419,9 @@ class GenerateFunctionBodies(VhdlVisitor):
         byte = (list(extractor(s, False)) for s in subspaces)
         byte = [{'index' : n, 'fields': f} for n, f in enumerate(byte) if f]
         
-        tmpl = jinja.get_template('vhdl/fnbody_register_complex.j2')
-        self.print(tmpl.render(
-            name=node.name, fields=fields, byte=byte
+        self.print(
+            self.template('fnbody_register_complex.j2').render(
+                name=node.name, fields=fields, byte=byte   
         ))
         
     def visit_SimpleRegister(self, node):
@@ -430,13 +431,12 @@ class GenerateFunctionBodies(VhdlVisitor):
             '{} downto {}'.format(min(low+7, node.width-1), low)
             for low in range(0, node.width, 8)
         ]
-        
-        tmpl = jinja.get_template('vhdl/fnbody_register_simple.j2')
-        self.print(tmpl.render(
-            name=node.name,
-            subtype=register_format(node, index=False),
-            srcrange='{} downto 0'.format(node.width-1),
-            byte=byte
+        self.print(
+            self.template('fnbody_register_simple.j2').render(
+                name=node.name,
+                subtype=register_format(node, index=False),
+                srcrange='{} downto 0'.format(node.width-1),
+                byte=byte
         ))
 
 #######################################################################

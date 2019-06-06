@@ -506,8 +506,8 @@ class Component(HtiElement):
         '{http://www.w3.org/2001/XMLSchema-instance}noNamespaceSchemaLocation' : str
     }
     defaults = {
-        'readOnly' : False,
-        'writeOnly' : False
+        'readOnly' : None,
+        'writeOnly' : None
     }
     
     space_placer = space.BinaryPlacer
@@ -643,6 +643,8 @@ class _Array(HtiElement):
     optional = {
         'name' : str,
         'framesize' : toint,
+        'readOnly' : tf,
+        'writeOnly' : tf
     }
     
     isarray = True

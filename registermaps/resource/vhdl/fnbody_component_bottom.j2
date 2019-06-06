@@ -1,4 +1,14 @@
----- Complete Register File ----
+{#  fnbody_component_bottom.j2
+
+Component package body that has to be below the lower-level accessors, because
+it references internal functions.
+
+Expects:
+    node (RegisterArray): The registerarray in question
+#}
+--------------------------------------------------------------------------------
+--  Complete Register File
+--------------------------------------------------------------------------------
 
 procedure UPDATE_REGFILE(
     dat: in t_busdata; byteen : in std_logic_vector;

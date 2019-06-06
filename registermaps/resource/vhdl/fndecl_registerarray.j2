@@ -1,0 +1,25 @@
+{#  fndecl_registerarray.j2
+
+Registerarray function declaration templates for both simple and complex cases.
+
+Expects:
+    node (RegisterArray): The registerarray in question
+#}
+
+{% set offset_t = "integer range 0 to {}".format(node.size * node.framesize - 1) %}
+procedure UPDATE_{{node.name}}(
+    dat: in t_busdata; byteen : in std_logic_vector;
+    offset: in {{offset_t}};
+    variable ra: inout ta_{{node.name}};
+    success: out boolean);
+procedure UPDATESIG_{{node.name}}(
+    dat: in t_busdata; byteen : in std_logic_vector;
+    offset: in {{offset_t}};
+    signal ra: inout ta_{{node.name}};
+    success: out boolean);
+procedure READ_{{node.name}}(
+    offset: in {{offset_t}};
+    ra: in ta_{{node.name}};
+    dat: out t_busdata;
+    success: out boolean);
+
