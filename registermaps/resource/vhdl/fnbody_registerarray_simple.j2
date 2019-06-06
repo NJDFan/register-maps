@@ -62,12 +62,12 @@ begin
  {% endif %}
 end procedure READ_{{node.name}};
 
-function {{node.name}}_IS_READABLE(offset : in t_addr) return boolean is
+function {{node.name}}_IS_READABLE(offset : in integer range 0 to {{node.size}}-1) return boolean is
 begin
     return {{ 'false' if node.writeOnly else 'true' }};
 end function {{node.name}}_IS_READABLE;
 
-function {{node.name}}_IS_WRITEABLE(offset : in t_addr) return boolean is
+function {{node.name}}_IS_WRITEABLE(offset : in integer range 0 to {{node.size}}-1) return boolean is
 begin
     return {{ 'false' if node.readOnly else 'true' }};
 end function {{node.name}}_IS_WRITEABLE;

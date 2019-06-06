@@ -336,9 +336,11 @@ class GenerateTypes(VhdlVisitor):
         """Push enumeration values into the enum list."""
         
         enumname = self.registername + '_' + self.field.name + '_' + node.name
+        quote = '"' if self.field.width > 1 else "'"
         self.enumlines.append(
-            'constant {}: {} := "{:0{}b}";'.format(
-                enumname, self.fieldtype, node.value, self.field.width
+            'constant {name}: {type} := {quote}{val:0{width}b}{quote};'.format(
+                name = enumname, type = self.fieldtype, quote = quote,
+                val = node.value, width = self.field.width
         ))
             
     def visit_MemoryMap(self, node):
