@@ -7,7 +7,11 @@ use work.pkg_{{node.name}}.all;
 {% set datahigh=(node.width-1) %}
 {% set behigh=(node.width//8)-1 %}
 {% set addrlsbs=behigh.bit_length() %}
-{% set addrhigh=(node.size-1).bit_length()-1+addrlsbs %}
+{#	AXI demands a minimum 4kB address space for each slave, making the
+	mininimum addrhigh 11.
+#}
+{% set addrhigh_nom = (node.size-1).bit_length()-1+addrlsbs %}
+{% set addrhigh = addrhigh_nom if addrhigh_nom > 11 else 11 %}
 entity {{node.name}}_axi4lite is
 	port (
 		-- START: User ports
