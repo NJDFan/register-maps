@@ -80,7 +80,7 @@ setup(
     # https://packaging.python.org/en/latest/requirements.html
     install_requires=[
         'lxml >= 3.5.0',
-        'jinja2 >= 2.9.6'
+        'jinja2 >= 2.10.1'
     ],
 
     # List additional groups of dependencies here (e.g. development
