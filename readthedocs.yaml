@@ -1,0 +1,19 @@
+# Read the Docs configuration file
+# This schema uses https://github.com/23andMe/Yamale
+# for the validation.
+# Default values are indicated with a comment (``Default: ...``).
+# Some values are default to the project config (settings from the web panel).
+
+# The version of the spec to be use
+version: 2
+python:
+  version: 3.6
+  system_packages: false
+  install:
+    - requirements: doc/requirements.txt
+    - method: pip
+      path: .
+  
+sphinx:
+  builder: html
+  configuration: doc/source/conf.py
