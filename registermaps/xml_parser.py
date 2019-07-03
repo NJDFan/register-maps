@@ -449,11 +449,16 @@ class MemoryMap(HtiElement):
         'writeOnly' : False,
     }
     space_placer = space.BinaryPlacer
-    space_resizer = space.BinaryResizer
     
     def __init__(self, xml_element, components, sourcefile='unknown file'):
         self._components = components
         super().__init__(xml_element, parent=None, sourcefile=sourcefile)
+        
+    def beforechildren(self):
+        if self.size is None:
+            self.space_resizer = space.BinaryResizer
+        else:
+            self.space_size = self.size
 
 class Instance(HtiElement):
     """
