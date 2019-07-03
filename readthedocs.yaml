@@ -11,7 +11,8 @@ python:
   system_packages: false
   install:
     - requirements: doc/requirements.txt
+    - method: pip
+      path: .
   
 sphinx:
   builder: html
-  configuration: doc/conf.py
